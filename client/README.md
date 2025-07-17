@@ -3,7 +3,7 @@
 pip install pygame
 ```
 
-## Once in the client directory, run :
+## Once you're in the `client/` directory, run:
 ```
 python game_gui.py
 ```
