@@ -4,6 +4,12 @@ TCP Server for handling multiple client connections
 
 import socket
 import threading
+import sys
+import os
+
+# Add the shared directory to the path
+sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'shared'))
+from net_protocol import *
 
 HOST = '0.0.0.0'
 PORT = 5555
@@ -82,8 +88,15 @@ class Server:
                 if not received_data:
                     break
                 
-                # Echo the data back to client
-                client_socket.send(received_data)
+                try:
+                    # Try to deserialize as protocol message
+                    message = deserialize(received_data)
+                    response = self.handle_message(message, client_address)
+                    if response:
+                        client_socket.send(response)
+                except json.JSONDecodeError:
+                    # If it's not a protocol message, echo it back (legacy behavior)
+                    client_socket.send(received_data)
                 
         except ConnectionResetError:
             print(f"Client {client_address} disconnected unexpectedly")
@@ -92,3 +105,40 @@ class Server:
         finally:
             client_socket.close()
             print(f"Connection with {client_address} closed")
+
+    def handle_message(self, message, client_address):
+        """
+        Handle protocol messages from clients
+        """
+        msg_type = message.get('type')
+        payload = message.get('payload', {})
+        
+        print(f"Received {msg_type} from {client_address}")
+        
+        if msg_type == MSG_CREATE_ROOM:
+            return self.handle_host_game(payload, client_address)
+        else:
+            # Unknown message type
+            error_response = serialize(MSG_ERROR, {'message': f'Unknown message type: {msg_type}'})
+            return error_response
+
+    def handle_host_game(self, payload, client_address):
+        """
+        Handle MSG_CREATE_ROOM request
+        """
+        game_name = payload.get('game_name', 'Unnamed Game')
+        max_players = payload.get('max_players', 4)
+        
+        print(f"Client {client_address} wants to host game: '{game_name}' (max {max_players} players)")
+        
+        # For now, just acknowledge the request, create create a game room otherwise
+        # Just return a game id using the address, later maybe like a 6 digit game room code
+        response_payload = {
+            'success': True,
+            'game_id': f'game_{id(client_address)}', 
+            'game_name': game_name,
+            'max_players': max_players,
+            'message': f'Successfully created game room: {game_name}'
+        }
+        
+        return serialize(MSG_CREATE_ROOM_ACK, response_payload)
