@@ -8,7 +8,7 @@ import os
 
 # Add the shared directory to the path
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'shared'))
-from net_protocol import *
+from protocol import *
 
 def test_client():
     server_ip = input("Enter server IP (or 'localhost' for local): ").strip()

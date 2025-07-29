@@ -9,7 +9,7 @@ import os
 
 # Add the shared directory to the path
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'shared'))
-from net_protocol import *
+from protocol import *
 
 HOST = '0.0.0.0'
 PORT = 5555
