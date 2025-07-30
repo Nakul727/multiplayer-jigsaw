@@ -1,13 +1,8 @@
-"""
-TCP Server for handling multiple client connections
-"""
-
 import socket
 import threading
 import sys
 import os
 
-# Add the shared directory to the path
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'shared'))
 from protocol import *
 
@@ -26,9 +21,9 @@ class Server:
         self.server_socket.listen(5)
         self.is_running = False
 
-        # Track connected clients and object locks
-        self.clients = []  # List of (client_socket, client_address)
-        self.locked_objects = {}  # object_id -> client_address
+        self.clients = []           # (client_socket, client_address)
+        self.game_rooms = {}        # game_id -> GameRoom
+        self.client_rooms = {}      # client_address -> game_id
 
     def start(self):
         """
@@ -45,11 +40,13 @@ class Server:
             while self.is_running:
                 client_socket, client_address = self.server_socket.accept()
                 self.clients.append((client_socket, client_address))
+
                 # Handle each client in a separate thread
                 client_thread = threading.Thread(
                     target=self.handle_client_connection, 
                     args=(client_socket, client_address)
                 )
+
                 client_thread.daemon = True
                 client_thread.start()
 
@@ -79,42 +76,71 @@ class Server:
         except Exception:
             return "127.0.0.1"
 
+    # -------------------------------------------------------------------------
+
     def handle_client_connection(self, client_socket, client_address):
         """
-        Handle communication with a single client
+        Main thread function to handle communication with a single client
         """
-
         print(f"New connection established from {client_address}")
 
         try:
             while self.is_running:
-                # Receive data from client
                 received_data = client_socket.recv(BUFFER_SIZE)
                 if not received_data:
                     break
+                
                 try:
-                    # Try to deserialize as protocol message
+                    # Deserialize message JSON data 
                     message = deserialize(received_data)
+
+                    # Pass it to handler to that returns response to send back
+                    # and broadcast to send to other connected clients
                     response, broadcast = self.handle_message(message, client_address)
                     if response:
                         client_socket.send(response)
-                    # If broadcast is set, send to all clients
                     if broadcast:
-                        self.broadcast_to_clients(broadcast, exclude=client_socket)
+                        self.broadcast_to_clients(broadcast, client_address, exclude=client_socket)
+
                 except json.JSONDecodeError:
-                    # If it's not a protocol message, echo it back (legacy behavior)
+                    message_str = received_data.decode('utf-8')
+                    print(f"Legacy message from {client_address}: {message_str}")
                     client_socket.send(received_data)
+                    
         except ConnectionResetError:
             print(f"Client {client_address} disconnected unexpectedly")
         except Exception as error:
             print(f"Error handling client {client_address}: {error}")
         finally:
-            client_socket.close()
-            # Remove from clients list
-            self.clients = [(sock, addr) for sock, addr in self.clients if sock != client_socket]
-            print(f"Connection with {client_address} closed")
+            self.handle_cleanup_client(client_socket, client_address)
+
+    def handle_message(self, message, client_address):
+        """
+        Central handler function for each message type
+        """
+        msg_type = message.get('type')
+        payload = message.get('payload', {})
+        print(f"Received {msg_type} from {client_address}")
+
+        response = None
+        broadcast = None
+
+        if msg_type == MSG_HOST_GAME:
+            response = self.handle_host_game(payload, client_address)
+        elif msg_type == MSG_JOIN_GAME:
+            response, broadcast = self.handle_join_game(payload, client_address)
+        elif msg_type == MSG_LEAVE_GAME:
+            response, broadcast = self.handle_leave_game(client_address)
+        else:
+            response = serialize(MSG_ERROR, {'message': f'Unknown message type: {msg_type}'})
+
+        return response, broadcast
 
     def broadcast_to_clients(self, message_bytes, exclude=None):
+        """
+        Broadcase the message_bytes to all other clients
+        This will later change to broadcast to all client in the game room
+        """
         for sock, _ in self.clients:
             if sock != exclude:
                 try:
@@ -122,71 +148,59 @@ class Server:
                 except Exception:
                     pass
 
-    def handle_message(self, message, client_address):
+    def handle_cleanup_client(self, client_socket, client_address):
         """
-        Handle protocol messages from clients
+        Post cleanup for client after disconnection from server
+        Later this will involve removing the client from game room alongside.
         """
-        msg_type = message.get('type')
-        payload = message.get('payload', {})
+        self.clients = [(sock, addr) for sock, addr in self.clients if sock != client_socket]
+        client_socket.close()
+        print(f"Connection with {client_address} closed")
 
-        print(f"Received {msg_type} from {client_address}")
-
-        # Default: (response, broadcast)
-        response = None
-        broadcast = None
-
-        if msg_type == MSG_CREATE_ROOM:
-            response = self.handle_host_game(payload, client_address)
-        elif msg_type == MSG_PLAYER_INPUT:
-            action = payload.get('action')
-            object_id = payload.get('object_id')
-            if action == INPUT_ACTION_LOCK_OBJECT and object_id:
-                # Try to lock the object
-                if object_id not in self.locked_objects:
-                    self.locked_objects[object_id] = client_address
-                    # Broadcast lock
-                    lock_payload = {'object_id': object_id, 'locked_by': str(client_address)}
-                    broadcast = serialize(MSG_OBJECT_LOCKED, lock_payload)
-                    # Also send confirmation to the requester
-                    response = serialize(MSG_OBJECT_LOCKED, lock_payload)
-                else:
-                    # Already locked, send error
-                    response = serialize(MSG_ERROR, {'message': f'Object {object_id} is already locked.'})
-            elif action == INPUT_ACTION_RELEASE_OBJECT and object_id:
-                # Only the locker can release
-                if self.locked_objects.get(object_id) == client_address:
-                    del self.locked_objects[object_id]
-                    release_payload = {'object_id': object_id, 'released_by': str(client_address)}
-                    broadcast = serialize(MSG_OBJECT_RELEASED, release_payload)
-                    # Also send confirmation to the requester
-                    response = serialize(MSG_OBJECT_RELEASED, release_payload)
-                else:
-                    response = serialize(MSG_ERROR, {'message': f'You cannot release object {object_id}.'})
-            else:
-                response = serialize(MSG_ERROR, {'message': 'Invalid player input.'})
-        else:
-            # Unknown message type
-            response = serialize(MSG_ERROR, {'message': f'Unknown message type: {msg_type}'})
-
-        return response, broadcast
+    # -------------------------------------------------------------------------
 
     def handle_host_game(self, payload, client_address):
         """
-        Handle MSG_CREATE_ROOM request
+        Payload must contain the game_name and max_players
+        Creates a new game room and returns MSG_HOST_GAME_ACK with game room data
         """
-        game_name = payload.get('game_name', 'Unnamed Game')
+
+        game_name = payload.get('game_name', 'Unnamed Room')
         max_players = payload.get('max_players', 4)
         
-        print(f"Client {client_address} wants to host game: '{game_name}' (max {max_players} players)")
+        # Client must not be in any existing game rooms
+        if client_address in self.client_rooms:
+            return serialize(MSG_ERROR, {'message': 'Already in a game room'})
         
-        # For now, just acknowledge the request, create create a game room otherwise
-        # Just return a game id using the address, later maybe like a 6 digit game room code
-        response_payload = {
-            'success': True,
-            'game_id': f'game_{id(client_address)}', 
-            'game_name': game_name,
-            'max_players': max_players,
-            'message': f'Successfully created game room: {game_name}'
-        }
+        # Generate a random 6-character alphanumeric game ID
+        import random
+        import string
+        def generate_game_id():
+            chars = string.ascii_uppercase + string.digits
+            return ''.join(random.choice(chars) for _ in range(6))
+        game_id = generate_game_id()
+        while game_id in self.game_rooms:
+            game_id = generate_game_id()
+
+        print(f"Client {client_address} hosted game: '{game_name}' (ID: {game_id})")
+        pass
+
+        # # Create a new GameRoom
+        # room = GameRoom(game_id, game_name, max_players, client_address)
+        # self.game_rooms[game_id] = room
+        # self.client_rooms[client_address] = game_id
+        # print(f"Client {client_address} hosted game: '{game_name}' (ID: {game_id})")
+
+        # # Return GameRoom info to client 
+        # response_payload = {
+        #     'success': True,
+        #     'game_id': game_id,
+        #     'game_name': game_name,
+        #     'max_players': max_players,
+        #     'current_players': room.get_player_count(),
+        #     'players': room.get_players_info(),
+        #     'host': room.get_host_info(),
+        #     'message': f'Successfully hosted game: {game_name}'
+        # }
         
-        return serialize(MSG_CREATE_ROOM_ACK, response_payload)
+        # return serialize(MSG_HOST_GAME_ACK, response_payload)
