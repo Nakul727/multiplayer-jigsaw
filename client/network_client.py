@@ -2,7 +2,6 @@ import socket
 import sys
 import os
 
-# importing from the 'shared' directory.
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'shared'))
 from protocol import *
 

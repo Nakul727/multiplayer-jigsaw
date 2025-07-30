@@ -13,7 +13,6 @@ COLOR_WHITE = (255, 255, 255)
 COLOR_GREY = (200, 200, 200)
 COLOR_BLACK = (0, 0, 0)
 
-
 class GameGUI:
     def __init__(self):
         pygame.init()
@@ -30,7 +29,6 @@ class GameGUI:
         else:
             print(f"Connected to server: {initial_message}")
 
-
     def run(self):
         running = True
         while running:
@@ -38,6 +36,7 @@ class GameGUI:
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     running = False
+
                     self.network_client.close() # Close the connection when quitting
 
                 if event.type == pygame.MOUSEBUTTONDOWN:
@@ -56,7 +55,6 @@ class GameGUI:
                         print(f"Sending LOCK request for {object_id}")
                         response = self.network_client.send(MSG_PLAYER_INPUT, payload)
                         print(f"Server response: {response}")
-
 
                 if event.type == pygame.MOUSEBUTTONUP:
                     if event.button == 1: # Left mouse button up
