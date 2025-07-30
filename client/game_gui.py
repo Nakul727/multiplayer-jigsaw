@@ -78,7 +78,3 @@ class GameGUI:
             pygame.draw.line(self.screen, COLOR_GREY, (x * SQUARE_SIZE, 0), (x * SQUARE_SIZE, WINDOW_HEIGHT))
         for y in range(GRID_SIZE + 1):
             pygame.draw.line(self.screen, COLOR_GREY, (0, y * SQUARE_SIZE), (WINDOW_WIDTH, y * SQUARE_SIZE))
-
-if __name__ == '__main__':
-    gui = GameGUI()
-    gui.run()
