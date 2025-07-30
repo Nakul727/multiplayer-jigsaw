@@ -1,5 +1,6 @@
 import pygame
 from network_client import NetworkClient
+from protocol import *
 
 # Size
 WINDOW_WIDTH = 800
@@ -21,7 +22,6 @@ class GameGUI:
         self.clock = pygame.time.Clock() # need to control frame rate
         self.is_scribbling = False
         
-        # connect to network client (hope this works)
         self.network_client = NetworkClient()
         initial_message = self.network_client.connect()
         if not initial_message:
@@ -38,28 +38,40 @@ class GameGUI:
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     running = False
+                    self.network_client.close() # Close the connection when quitting
 
                 if event.type == pygame.MOUSEBUTTONDOWN:
-                    if event.button == 1:
-                        self.is_scribbling = True
+                    if event.button == 1: # Left mouse button down
                         pos = pygame.mouse.get_pos()
-                        grid_coords = (pos[0] // SQUARE_SIZE, pos[1] // SQUARE_SIZE)
-                        
-                        # --- SEND DATA TO SERVER ---
-                        message = f"mouse down on: {grid_coords[0]};{grid_coords[1]}"
-                        print(f"Sending: {message}")
-                        self.network_client.send(message)
+                        grid_x, grid_y = pos[0] // SQUARE_SIZE, pos[1] // SQUARE_SIZE
+                        object_id = f"square_{grid_x}_{grid_y}" # Create a unique ID for the square
+
+                        # --- SEND DATA ---
+                        # 1. Create the payload dictionary
+                        payload = {
+                            'action': INPUT_ACTION_LOCK_OBJECT,
+                            'object_id': object_id
+                        }
+                        # 2. Call send() with the message type and payload
+                        print(f"Sending LOCK request for {object_id}")
+                        response = self.network_client.send(MSG_PLAYER_INPUT, payload)
+                        print(f"Server response: {response}")
+
 
                 if event.type == pygame.MOUSEBUTTONUP:
-                    if event.button == 1:
-                        self.is_scribbling = False
+                    if event.button == 1: # Left mouse button up
                         pos = pygame.mouse.get_pos()
-                        grid_coords = (pos[0] // SQUARE_SIZE, pos[1] // SQUARE_SIZE)
-                        
-                        # --- SEND DATA TO SERVER ---
-                        message = f"mouse up on: {grid_coords[0]};{grid_coords[1]}"
-                        print(f"Sending: {message}")
-                        self.network_client.send(message)
+                        grid_x, grid_y = pos[0] // SQUARE_SIZE, pos[1] // SQUARE_SIZE
+                        object_id = f"square_{grid_x}_{grid_y}"
+
+                        # --- SEND DATA ---
+                        payload = {
+                            'action': INPUT_ACTION_RELEASE_OBJECT,
+                            'object_id': object_id
+                        }
+                        print(f"Sending RELEASE request for {object_id}")
+                        response = self.network_client.send(MSG_PLAYER_INPUT, payload)
+                        print(f"Server response: {response}")
             
             # draw and update
             self.draw_game()

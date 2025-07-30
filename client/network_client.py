@@ -1,4 +1,10 @@
 import socket
+import sys
+import os
+
+# importing from the 'shared' directory.
+sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'shared'))
+from protocol import *
 
 class NetworkClient:
     # Initializes the network client, but using own computer for now
@@ -10,18 +16,30 @@ class NetworkClient:
     def connect(self):
         try:
             self.client.connect(self.addr)
-            # if connect, wait to receive a message server
-            return self.client.recv(2048).decode()
         except socket.error as e:
             print(f"Connection Error: {e}")
             return None
+        
     # send stuff to server
-    def send(self, data):
+    def send(self, msg_type, payload):
         try:
-            self.client.send(str.encode(data))
+            # Serialize the message using the protocol
+            message = serialize(msg_type, payload)
+            self.client.send(message)
+
             # Wait for a reply from the server
-            reply = self.client.recv(2048).decode()
-            return reply
+            response = self.client.recv(4096)
+            if response:
+                # Deserialize the response
+                return deserialize(response)
+            return None
         except socket.error as e:
             print(f"Send/Receive Error: {e}")
             return None
+        except Exception as e:
+            print(f"An error occurred during communication: {e}")
+            return None
+        
+    # close connection to server
+    def close(self):
+        self.client.close()
