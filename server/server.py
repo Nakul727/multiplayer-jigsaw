@@ -5,6 +5,7 @@ import os
 
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'shared'))
 from protocol import *
+from game_room import GameRoom
 
 HOST = '0.0.0.0'
 PORT = 5555
@@ -182,25 +183,36 @@ class Server:
         while game_id in self.game_rooms:
             game_id = generate_game_id()
 
+        # Create a new GameRoom
+        room = GameRoom(game_id, game_name, max_players, client_address)
+        self.game_rooms[game_id] = room
+        self.client_rooms[client_address] = game_id
         print(f"Client {client_address} hosted game: '{game_name}' (ID: {game_id})")
+
+        # Return GameRoom info to client 
+        response_payload = {
+            'success': True,
+            'game_id': game_id,
+            'game_name': game_name,
+            'max_players': max_players,
+            'current_players': room.get_player_count(),
+            'players': room.get_players_info(),
+            'host': room.get_host_info(),
+            'message': f'Successfully hosted game: {game_name}'
+        }
+        
+        return serialize(MSG_HOST_GAME_ACK, response_payload)
+    
+    def handle_join_game(self, payload, client_address):
+        """
+        Handle client request to join an existing game room.
+        Payload should contain game_id to join.
+        """
         pass
 
-        # # Create a new GameRoom
-        # room = GameRoom(game_id, game_name, max_players, client_address)
-        # self.game_rooms[game_id] = room
-        # self.client_rooms[client_address] = game_id
-        # print(f"Client {client_address} hosted game: '{game_name}' (ID: {game_id})")
-
-        # # Return GameRoom info to client 
-        # response_payload = {
-        #     'success': True,
-        #     'game_id': game_id,
-        #     'game_name': game_name,
-        #     'max_players': max_players,
-        #     'current_players': room.get_player_count(),
-        #     'players': room.get_players_info(),
-        #     'host': room.get_host_info(),
-        #     'message': f'Successfully hosted game: {game_name}'
-        # }
-        
-        # return serialize(MSG_HOST_GAME_ACK, response_payload)
+    def handle_leave_game(self, client_address):
+        """
+        Handle client request to leave their current game room.
+        Remove client from room and notify other players.
+        """
+        pass
