@@ -137,17 +137,52 @@ class Server:
 
         return response, broadcast
 
-    def broadcast_to_clients(self, message_bytes, exclude=None):
+    def broadcast_to_room(self, message_bytes, game_id, exclude=None):
         """
-        Broadcase the message_bytes to all other clients
-        This will later change to broadcast to all client in the game room
+        Broadcast message to all clients in a specific game room 
+        except the excluded client.
         """
-        for sock, _ in self.clients:
-            if sock != exclude:
+        if game_id not in self.game_rooms:
+            return
+        
+        room = self.game_rooms[game_id]
+        
+        # Find client sockets for players in this room
+        for sock, addr in self.clients:
+            if addr in room.players and sock != exclude:
                 try:
                     sock.send(message_bytes)
-                except Exception:
-                    pass
+                except Exception as e:
+                    print(f"Failed to send to {addr}: {e}")
+    
+    def broadcast_to_clients(self, message_bytes, client_address, exclude=None):
+        """
+        Broadcast message to all clients in the same room as the client_address.
+        Updated to only broadcast to room members, not all connected clients.
+        """
+        # Find which room the client is in
+        if client_address in self.client_rooms:
+            game_id = self.client_rooms[client_address]
+            self.broadcast_to_room(message_bytes, game_id, exclude)
+        else:
+            print(f"Client {client_address} is not in any room for broadcasting")
+
+    def broadcast_to_room(self, message_bytes, game_id, exclude=None):
+        """
+        Broadcast message to all clients in a specific game room except the excluded client.
+        """
+        if game_id not in self.game_rooms:
+            return
+        
+        room = self.game_rooms[game_id]
+        
+        # Find client sockets for players in this room
+        for sock, addr in self.clients:
+            if addr in room.players and sock != exclude:
+                try:
+                    sock.send(message_bytes)
+                except Exception as e:
+                    print(f"Failed to send to {addr}: {e}")
 
     def handle_cleanup_client(self, client_socket, client_address):
         """
@@ -165,13 +200,13 @@ class Server:
         Payload must contain the game_name and max_players
         Creates a new game room and returns MSG_HOST_GAME_ACK with game room data
         """
-
         game_name = payload.get('game_name', 'Unnamed Room')
         max_players = payload.get('max_players', 4)
         
         # Client must not be in any existing game rooms
         if client_address in self.client_rooms:
-            return serialize(MSG_ERROR, {'message': 'Already in a game room'})
+            response = serialize(MSG_ERROR, {'message': 'Already in a game room'})
+            return response
         
         # Generate a random 6-character alphanumeric game ID
         import random
@@ -179,6 +214,7 @@ class Server:
         def generate_game_id():
             chars = string.ascii_uppercase + string.digits
             return ''.join(random.choice(chars) for _ in range(6))
+        
         game_id = generate_game_id()
         while game_id in self.game_rooms:
             game_id = generate_game_id()
@@ -201,14 +237,74 @@ class Server:
             'message': f'Successfully hosted game: {game_name}'
         }
         
-        return serialize(MSG_HOST_GAME_ACK, response_payload)
-    
+        response = serialize(MSG_HOST_GAME_ACK, response_payload)
+        return response
+
     def handle_join_game(self, payload, client_address):
         """
         Handle client request to join an existing game room.
         Payload should contain game_id to join.
         """
-        pass
+        game_id = payload.get('game_id')
+        
+        # Validate game_id is provided
+        if not game_id:
+            response = serialize(MSG_ERROR, {'message': 'Game ID is required'})
+            broadcast = None
+            return response, broadcast
+        
+        # Check if client is already in a game room
+        if client_address in self.client_rooms:
+            response = serialize(MSG_ERROR, {'message': 'Already in a game room'})
+            broadcast = None
+            return response, broadcast
+        
+        # Check if game room exists
+        if game_id not in self.game_rooms:
+            response = serialize(MSG_ERROR, {'message': 'Game room not found'})
+            broadcast = None
+            return response, broadcast
+        
+        room = self.game_rooms[game_id]
+        
+        # Check if room is full
+        if room.is_full():
+            response = serialize(MSG_ERROR, {'message': 'Game room is full'})
+            broadcast = None
+            return response, broadcast
+        
+        # Add player to the room
+        if room.add_player(client_address):
+            self.client_rooms[client_address] = game_id
+            print(f"Client {client_address} joined game: '{room.game_name}' (ID: {game_id})")
+            
+            # Prepare response for the joining client
+            response_payload = {
+                'success': True,
+                'game_id': game_id,
+                'game_name': room.game_name,
+                'max_players': room.max_players,
+                'current_players': room.get_player_count(),
+                'players': room.get_players_info(),
+                'host': room.get_host_info(),
+                'message': f'Successfully joined game: {room.game_name}'
+            }
+            
+            # Prepare broadcast for other players in the room
+            broadcast_payload = {
+                'game_id': game_id,
+                'player': {"ip": client_address[0], "port": client_address[1]},
+                'current_players': room.get_player_count(),
+                'players': room.get_players_info()
+            }
+            
+            response = serialize(MSG_JOIN_GAME_ACK, response_payload)
+            broadcast = serialize(MSG_PLAYER_JOINED, broadcast_payload)
+            return response, broadcast
+        else:
+            response = serialize(MSG_ERROR, {'message': 'Failed to join game room'})
+            broadcast = None
+            return response, broadcast
 
     def handle_leave_game(self, client_address):
         """
