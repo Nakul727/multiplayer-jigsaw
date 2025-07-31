@@ -101,7 +101,16 @@ class Server:
                     if response:
                         client_socket.send(response)
                     if broadcast:
-                        self.broadcast_to_clients(broadcast, client_address, exclude=client_socket)
+                        # For leave game, we need to broadcast to the specific room
+                        # Since we remove client from room already in handle_message, 
+                        # extract game_id from broadcast message to find room
+                        msg_type = message.get('type')
+                        if msg_type == MSG_LEAVE_GAME:
+                            broadcast_data = json.loads(broadcast.decode('utf-8'))
+                            game_id = broadcast_data['payload']['game_id']
+                            self.broadcast_to_room(broadcast, game_id, exclude=client_socket)
+                        else:
+                            self.broadcast_to_clients(broadcast, client_address, exclude=client_socket)
 
                 except json.JSONDecodeError:
                     message_str = received_data.decode('utf-8')
@@ -311,4 +320,60 @@ class Server:
         Handle client request to leave their current game room.
         Remove client from room and notify other players.
         """
-        pass
+        # Check if client is in any game room
+        if client_address not in self.client_rooms:
+            response = serialize(MSG_ERROR, {'message': 'Not in any game room'})
+            broadcast = None
+            return response, broadcast
+        
+        game_id = self.client_rooms[client_address]
+        room = self.game_rooms[game_id]
+        
+        # Store original host info before removal
+        was_host = (client_address == room.host_address)
+        old_host = room.get_host_info()
+        
+        # Remove player from the room
+        host_changed = room.remove_player(client_address)
+        del self.client_rooms[client_address]
+        
+        print(f"Client {client_address} left game: '{room.game_name}' (ID: {game_id})")
+        
+        # Check if room is now empty and should be deleted
+        if room.is_empty():
+            del self.game_rooms[game_id]
+            print(f"Game room '{room.game_name}' (ID: {game_id}) deleted - no players remaining")
+            
+            response_payload = {
+                'success': True,
+                'message': 'Successfully left game room'
+            }
+            response = serialize(MSG_LEAVE_GAME_ACK, response_payload)
+            broadcast = None
+            return response, broadcast
+        
+        # Prepare response for the leaving client
+        response_payload = {
+            'success': True,
+            'message': 'Successfully left game room'
+        }
+
+        # Prepare broadcast for remaining players in the room
+        broadcast_payload = {
+            'game_id': game_id,
+            'player': {"ip": client_address[0], "port": client_address[1]},
+            'current_players': room.get_player_count(),
+            'players': room.get_players_info()
+        }
+        
+        # If host changed, include new host info in broadcast
+        if host_changed:
+            broadcast_payload['new_host'] = room.get_host_info()
+            broadcast_payload['host_changed'] = True
+            print(f"Host changed from {old_host} to {room.get_host_info()}")
+        else:
+            broadcast_payload['host_changed'] = False
+
+        response = serialize(MSG_LEAVE_GAME_ACK, response_payload)
+        broadcast = serialize(MSG_PLAYER_LEFT, broadcast_payload)
+        return response, broadcast

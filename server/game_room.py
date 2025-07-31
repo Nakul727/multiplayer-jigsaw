@@ -39,6 +39,24 @@ class GameRoom:
         """
         return len(self.players) >= self.max_players
     
+    def is_empty(self):
+        """
+        Check if the game room has no players.
+        """
+        return len(self.players) == 0
+    
+    def is_host(self, client_address):
+        """
+        Check if the given client address is the host of this room.
+        """
+        return client_address == self.host_address
+    
+    def has_player(self, client_address):
+        """
+        Check if a specific player is in this game room.
+        """
+        return client_address in self.players
+    
     def get_player_count(self):
         """
         Return the current number of players in the game room.
@@ -56,3 +74,18 @@ class GameRoom:
         Return the host's information as a dictionary with IP and port.
         """
         return {"ip": self.host_address[0], "port": self.host_address[1]}
+    
+    def get_room_info(self):
+        """
+        Return complete room information as a dictionary.
+        """
+        return {
+            'game_id': self.game_id,
+            'game_name': self.game_name,
+            'max_players': self.max_players,
+            'current_players': self.get_player_count(),
+            'host': self.get_host_info(),
+            'players': self.get_players_info(),
+            'is_full': self.is_full(),
+            'is_empty': self.is_empty()
+        }
