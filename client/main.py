@@ -1,8 +1,8 @@
-from game_gui import GameGUI
+# from game_gui import GameGUI
 
-def main():
-    gui = GameGUI()
-    gui.run()
+# def main():
+#     gui = GameGUI()
+#     gui.run()
 
-if __name__ == "__main__":
-    main()
+# if __name__ == "__main__":
+#     main()
