@@ -109,8 +109,13 @@ class NetworkManager:
             self._handle_player_left(payload)
         elif msg_type == MSG_ERROR:
             self._handle_error(payload)
+        elif msg_type == "TILE_LOCKED":
+            self._handle_tile_locked(payload)
+        elif msg_type == "TILE_RELEASED":
+            self._handle_tile_released(payload)
         else:
             print(f"Unknown message type received: {msg_type}")
+
 
     # -------------------------------------------------------------------------
 
@@ -188,3 +193,38 @@ class NetworkManager:
         except Exception as e:
             print(f"Failed to send message: {e}")
             return False
+        
+ # -------------------------------------------------------------------------
+
+    def lock_tile(self, tile_id):
+        """
+        Request to lock a tile. Sends message to server.
+        """
+        payload = {"tile_id": tile_id}
+        return self.send_message("LOCK_TILE", payload)
+
+    def release_tile(self, tile_id, coordinates):
+        """
+        Request to release a tile with its coordinates. Sends message to server.
+        """
+        payload = {"tile_id": tile_id, "coordinates": coordinates}
+        return self.send_message("RELEASE_TILE", payload)
+
+    def _handle_tile_locked(self, payload):
+        """
+        Handle notification that a tile has been locked by a player.
+        Update local state/UI as needed.
+        """
+        tile_id = payload.get("tile_id")
+        locker = payload.get("player")
+        print(f"Tile {tile_id} locked by {locker}")
+
+    def _handle_tile_released(self, payload):
+        """
+        Handle notification that a tile has been released and placed on the board.
+        Update local state/UI as needed.
+        """
+        tile_id = payload.get("tile_id")
+        coordinates = payload.get("coordinates")
+        releaser = payload.get("player")
+        print(f"Tile {tile_id} released by {releaser} at {coordinates}")

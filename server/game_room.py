@@ -9,6 +9,41 @@ class GameRoom:
         self.max_players = max_players
         self.host_address = host_address
         self.players = [host_address]
+        # Track locked tiles: {tile_id: client_address}
+        self.locked_tiles = {}
+        # Track released tiles: {tile_id: coordinates}
+        self.released_tiles = {}
+    def lock_tile(self, tile_id, client_address):
+        """
+        Attempt to lock a tile for a player. Returns True if successful, False if already locked.
+        """
+        if tile_id in self.locked_tiles:
+            return False  # Already locked
+        self.locked_tiles[tile_id] = client_address
+        return True
+
+    def release_tile(self, tile_id, client_address, coordinates):
+        """
+        Release a locked tile and record its coordinates. Only the locking player can release.
+        Returns True if successful, False otherwise.
+        """
+        if self.locked_tiles.get(tile_id) == client_address:
+            del self.locked_tiles[tile_id]
+            self.released_tiles[tile_id] = coordinates  # e.g., (x, y)
+            return True
+        return False
+
+    def get_locked_tiles(self):
+        """
+        Return a dict of currently locked tiles and their owners.
+        """
+        return self.locked_tiles.copy()
+
+    def get_released_tiles(self):
+        """
+        Return a dict of released tiles and their coordinates.
+        """
+        return self.released_tiles.copy()
     
     def add_player(self, client_address):
         """
