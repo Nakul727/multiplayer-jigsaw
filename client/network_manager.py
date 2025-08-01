@@ -189,9 +189,44 @@ class NetworkManager:
         error_message = payload.get('message', 'Unknown error')
         print(f"[ACK] Server error: {error_message}")
 
-
     # -------------------------------------------------------------------------
+    # Client to Server Helpers
 
+    def lock_object(self, object_id):
+        """
+        Request to lock an object.
+        """
+        payload = self._make_payload(object_id=object_id)
+        return self.send_message(MSG_LOCK_OBJECT, payload)
+
+    def move_locked_object(self, object_id, position):
+        """
+        Send a request to move a locked object to a new position.
+        """
+        payload = self._make_payload(object_id=object_id, position=position)
+        return self.send_message(MSG_MOVE_LOCKED_OBJECT, payload)
+
+    def release_object(self, object_id, position):
+        """
+        Request to release an object with its position.
+        """
+        payload = self._make_payload(object_id=object_id, position=position)
+        return self.send_message(MSG_RELEASE_OBJECT, payload)
+
+    def puzzle_solved(self, completion_time=None, total_pieces=None):
+        """
+        Notify the server that the puzzle is completed.
+        """
+        payload = self._make_payload(completion_time=completion_time, total_pieces=total_pieces)
+        return self.send_message(MSG_PUZZLE_SOLVED, payload)
+
+    def _make_payload(self, **kwargs):
+        """
+        Build a payload dictionary, excluding keys with None values.
+        Usage: self._make_payload(object_id=..., position=...)
+        """
+        return {k: v for k, v in kwargs.items() if v is not None}
+    
     def send_message(self, msg_type, payload):
         """
         Send a message to the server with the specified type and payload.
@@ -206,38 +241,3 @@ class NetworkManager:
         except Exception as e:
             print(f"Failed to send message: {e}")
             return False
-        
- # -------------------------------------------------------------------------
-
-    def lock_tile(self, tile_id):
-        """
-        Request to lock a tile. Sends message to server.
-        """
-        payload = {"tile_id": tile_id}
-        return self.send_message("LOCK_TILE", payload)
-
-    def release_tile(self, tile_id, coordinates):
-        """
-        Request to release a tile with its coordinates. Sends message to server.
-        """
-        payload = {"tile_id": tile_id, "coordinates": coordinates}
-        return self.send_message("RELEASE_TILE", payload)
-
-    def _handle_tile_locked(self, payload):
-        """
-        Handle notification that a tile has been locked by a player.
-        Update local state/UI as needed.
-        """
-        tile_id = payload.get("tile_id")
-        locker = payload.get("player")
-        print(f"Tile {tile_id} locked by {locker}")
-
-    def _handle_tile_released(self, payload):
-        """
-        Handle notification that a tile has been released and placed on the board.
-        Update local state/UI as needed.
-        """
-        tile_id = payload.get("tile_id")
-        coordinates = payload.get("coordinates")
-        releaser = payload.get("player")
-        print(f"Tile {tile_id} released by {releaser} at {coordinates}")
