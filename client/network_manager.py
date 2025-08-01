@@ -71,12 +71,15 @@ class NetworkManager:
         """
         while self.listening and self.connected:
             try:
-                data = self.client_socket.recv(2048)
+                data = self.client_socket.recv(4096)
                 if not data:
                     break
                 
                 try:
                     message = deserialize(data)
+                    # Temporary
+                    print(json.dumps(message, indent=2))
+                    
                     self._handle_received_message(message)
                 except json.JSONDecodeError:
                     print(f"Received non-JSON message: {data.decode('utf-8', errors='ignore')}")
@@ -89,6 +92,9 @@ class NetworkManager:
         self.connected = False
         print("Network listener stopped")
 
+    # -------------------------------------------------------------------------
+    # Server to Client Message Handlers
+    
     def _handle_received_message(self, message):
         """
         Process incoming messages using direct handler methods.
@@ -98,84 +104,91 @@ class NetworkManager:
         payload = message.get('payload', {})
         
         if msg_type == MSG_HOST_GAME_ACK:
-            self._handle_host_game_response(payload)
+            self._handle_host_game_ack(payload)
         elif msg_type == MSG_JOIN_GAME_ACK:
-            self._handle_join_game_response(payload)
+            self._handle_join_game_ack(payload)
         elif msg_type == MSG_LEAVE_GAME_ACK:
-            self._handle_leave_game_response(payload)
-        elif msg_type == MSG_PLAYER_JOINED:
-            self._handle_player_joined(payload)
-        elif msg_type == MSG_PLAYER_LEFT:
-            self._handle_player_left(payload)
+            self._handle_leave_game_ack(payload)
+        elif msg_type == MSG_LOCK_OBJECT_ACK:
+            self._handle_lock_object_ack(payload)
+        elif msg_type == MSG_RELEASE_OBJECT_ACK:
+            self._handle_release_object_ack(payload)
+        elif msg_type == MSG_PUZZLE_SOLVED_ACK:
+            self._handle_puzzle_solved_ack(payload)
+        elif msg_type == MSG_PLAYER_JOINED_BROD:
+            self._handle_player_joined_brod(payload)
+        elif msg_type == MSG_PLAYER_LEFT_BROD:
+            self._handle_player_left_brod(payload)
+        elif msg_type == MSG_LOCK_OBJECT_BROD:
+            self._handle_lock_object_brod(payload)
+        elif msg_type == MSG_RELEASE_OBJECT_BROD:
+            self._handle_release_object_brod(payload)
+        elif msg_type == MSG_MOVE_LOCKED_OBJECT_BROD:
+            self._handle_move_locked_object_brod(payload)
+        elif msg_type == MSG_PUZZLE_SOLVED_BROD:
+            self._handle_puzzle_solved_brod(payload)
         elif msg_type == MSG_ERROR:
             self._handle_error(payload)
-        elif msg_type == "TILE_LOCKED":
-            self._handle_tile_locked(payload)
-        elif msg_type == "TILE_RELEASED":
-            self._handle_tile_released(payload)
         else:
             print(f"Unknown message type received: {msg_type}")
 
+    # Ack Handlers
 
-    # -------------------------------------------------------------------------
-
-    def _handle_host_game_response(self, payload):
-        """
-        Handle server response to hosting a game.
-        Process game creation confirmation and room details.
-        """
+    def _handle_host_game_ack(self, payload):
         if payload.get('success'):
-            print(f"Game hosted successfully: {payload.get('game_id')}")
-            print(f"Room: {payload.get('game_name')} ({payload.get('current_players')}/{payload.get('max_players')})")
+            print(f"[ACK] Game hosted successfully: {payload.get('game_id')}")
+            print(f"[ACK] Room: {payload.get('game_name')} ({payload.get('current_players')}/{payload.get('max_players')})")
         else:
-            print(f"Failed to host game: {payload.get('message')}")
+            print(f"[ACK] Failed to host game: {payload.get('message')}")
 
-    def _handle_join_game_response(self, payload):
-        """
-        Handle server response to joining a game.
-        Process join confirmation and updated room information.
-        """
+    def _handle_join_game_ack(self, payload):
         if payload.get('success'):
-            print(f"Joined game: {payload.get('game_name')}")
-            print(f"Players: {payload.get('current_players')}/{payload.get('max_players')}")
+            print(f"[ACK] Joined game: {payload.get('game_name')}")
+            print(f"[ACK] Players: {payload.get('current_players')}/{payload.get('max_players')}")
         else:
-            print(f"Failed to join game: {payload.get('message')}")
+            print(f"[ACK] Failed to join game: {payload.get('message')}")
 
-    def _handle_leave_game_response(self, payload):
-        """
-        Handle server response to leaving a game.
-        Process leave confirmation and cleanup.
-        """
+    def _handle_leave_game_ack(self, payload):
         if payload.get('success'):
-            print("Left game successfully")
+            print("[ACK] Left game successfully")
         else:
-            print(f"Failed to leave game: {payload.get('message')}")
+            print(f"[ACK] Failed to leave game: {payload.get('message')}")
 
-    def _handle_player_joined(self, payload):
-        """
-        Handle notification that another player joined the game.
-        Update local player list and UI.
-        """
-        player_info = payload.get('player')
-        print(f"Player joined: {player_info.get('ip')}:{player_info.get('port')}")
-        print(f"Room now has {payload.get('current_players')} players")
+    def _handle_lock_object_ack(self, payload):
+        pass
 
-    def _handle_player_left(self, payload):
-        """
-        Handle notification that another player left the game.
-        Update local player list and UI.
-        """
-        player_info = payload.get('player')
-        print(f"Player left: {player_info.get('ip')}:{player_info.get('port')}")
-        print(f"Room now has {payload.get('current_players')} players")
+    def _handle_release_object_ack(self, payload):
+        pass
+
+    def _handle_puzzle_solved_ack(self, payload):
+        pass
+
+    # Broadcast Handlers
+
+    def _handle_player_joined_brod(self, payload):
+        pass
+
+    def _handle_player_left_brod(self, payload):
+        pass
+
+    def _handle_lock_object_brod(self, payload):
+        pass
+
+    def _handle_release_object_brod(self, payload):
+        pass
+
+    def _handle_move_locked_object_brod(self, payload):
+        pass
+
+    def _handle_puzzle_solved_brod(self, payload):
+        pass
+
+    # Error
 
     def _handle_error(self, payload):
-        """
-        Handle error messages from the server.
-        Display error information to user.
-        """
         error_message = payload.get('message', 'Unknown error')
-        print(f"Server error: {error_message}")
+        print(f"[ACK] Server error: {error_message}")
+
 
     # -------------------------------------------------------------------------
 
