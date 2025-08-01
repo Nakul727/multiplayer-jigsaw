@@ -9,107 +9,108 @@ class GameRoom:
         self.max_players = max_players
         self.host_address = host_address
         self.players = [host_address]
-        # Track locked tiles: {tile_id: client_address}
-        self.locked_tiles = {}
-        # Track released tiles: {tile_id: coordinates}
-        self.released_tiles = {}
-    def lock_tile(self, tile_id, client_address):
-        """
-        Attempt to lock a tile for a player. Returns True if successful, False if already locked.
-        """
-        if tile_id in self.locked_tiles:
-            return False  # Already locked
-        self.locked_tiles[tile_id] = client_address
-        return True
+        self.locked_objects = {}
+        self.released_objects = {}
 
-    def release_tile(self, tile_id, client_address, coordinates):
-        """
-        Release a locked tile and record its coordinates. Only the locking player can release.
-        Returns True if successful, False otherwise.
-        """
-        if self.locked_tiles.get(tile_id) == client_address:
-            del self.locked_tiles[tile_id]
-            self.released_tiles[tile_id] = coordinates  # e.g., (x, y)
-            return True
-        return False
+    # -------------------------------------------------------------------------
+    # Player Management
 
-    def get_locked_tiles(self):
-        """
-        Return a dict of currently locked tiles and their owners.
-        """
-        return self.locked_tiles.copy()
-
-    def get_released_tiles(self):
-        """
-        Return a dict of released tiles and their coordinates.
-        """
-        return self.released_tiles.copy()
-    
     def add_player(self, client_address):
         """
         Add a new player to the game room if there's space available.
-        Returns True if player was added successfully, False if room is full.
+        Returns True if player was added successfully, otherwise False.
         """
-        if len(self.players) < self.max_players:
-            self.players.append(client_address)
-            return True
-        return False
-    
+        if client_address in self.players:
+            return False
+        if len(self.players) >= self.max_players:
+            return False
+        self.players.append(client_address)
+        return True
+
     def remove_player(self, client_address):
         """
         Remove a player from the game room.
         If the host leaves and other players remain, the first player becomes the new host.
+        Returns True if host changed, otherwise False.
         """
         if client_address in self.players:
             self.players.remove(client_address)
-            if client_address == self.host_address and len(self.players) > 0:
-                self.host_address = self.players[0]
-                print(f"New host for room {self.game_id}: {self.host_address}")
-                return True
+
+            # Remove any locks held by this player
+            to_remove = [obj for obj, addr in self.locked_objects.items() if addr == client_address]
+            for obj in to_remove:
+                del self.locked_objects[obj]
+
+            # If host left, assign new host if possible
+            host_changed = False
+            if client_address == self.host_address:
+                if self.players:
+                    self.host_address = self.players[0]
+                    print(f"New host for room {self.game_id}: {self.host_address}")
+                    host_changed = True
+                else:
+                    self.host_address = None
+            return host_changed
         return False
-    
+
     def is_full(self):
-        """
-        Check if the game room has reached its maximum player capacity.
-        """
         return len(self.players) >= self.max_players
-    
+
     def is_empty(self):
-        """
-        Check if the game room has no players.
-        """
         return len(self.players) == 0
-    
-    def is_host(self, client_address):
-        """
-        Check if the given client address is the host of this room.
-        """
-        return client_address == self.host_address
-    
-    def has_player(self, client_address):
-        """
-        Check if a specific player is in this game room.
-        """
-        return client_address in self.players
-    
+
     def get_player_count(self):
-        """
-        Return the current number of players in the game room.
-        """
         return len(self.players)
-    
+
     def get_players_info(self):
-        """
-        Return a list of player information dictionaries containing IP and port.
-        """
         return [{"ip": addr[0], "port": addr[1]} for addr in self.players]
-    
+
     def get_host_info(self):
+        if self.host_address:
+            return {"ip": self.host_address[0], "port": self.host_address[1]}
+        return None
+
+    # -------------------------------------------------------------------------
+    # Object Locking
+
+    def lock_object(self, object_id, client_address):
         """
-        Return the host's information as a dictionary with IP and port.
+        Attempt to lock an object for a player.
+        Returns (success: bool, info: dict).
         """
-        return {"ip": self.host_address[0], "port": self.host_address[1]}
+        if not object_id:
+            return False, {'error': 'Missing object_id'}
+        if object_id in self.locked_objects:
+            return False, {'error': f'Object {object_id} is already locked'}
+        self.locked_objects[object_id] = client_address
+        return True, {'message': f'Object {object_id} locked'}
+
+    def release_object(self, object_id, client_address, position):
+        """
+        Release a locked object and record its coordinates.
+        Returns (success: bool, info: dict).
+        """
+        if not object_id or position is None:
+            return False, {'error': 'Missing object_id or position'}
+        if self.locked_objects.get(object_id) != client_address:
+            return False, {'error': f'Object {object_id} not locked by you'}
     
+        del self.locked_objects[object_id]
+        self.released_objects[object_id] = position
+        return True, {'message': f'Object {object_id} released'}
+
+    def get_locked_objects(self):
+        return {
+            obj: {"ip": addr[0], "port": addr[1]}
+            for obj, addr in self.locked_objects.items()
+        }
+
+    def get_released_objects(self):
+        return self.released_objects.copy()
+
+    # -------------------------------------------------------------------------
+    # Room Info
+
     def get_room_info(self):
         """
         Return complete room information as a dictionary.
@@ -122,5 +123,7 @@ class GameRoom:
             'host': self.get_host_info(),
             'players': self.get_players_info(),
             'is_full': self.is_full(),
-            'is_empty': self.is_empty()
+            'is_empty': self.is_empty(),
+            'locked_objects': self.get_locked_objects(),
+            'released_objects': self.get_released_objects()
         }

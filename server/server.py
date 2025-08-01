@@ -78,7 +78,7 @@ class Server:
             return "127.0.0.1"
 
     # -------------------------------------------------------------------------
-
+    
     def handle_client_connection(self, client_socket, client_address):
         """
         Main thread function to handle communication with a single client
@@ -90,10 +90,13 @@ class Server:
                 received_data = client_socket.recv(BUFFER_SIZE)
                 if not received_data:
                     break
-                
+
                 try:
                     # Deserialize message JSON data 
                     message = deserialize(received_data)
+
+                    # Temporary
+                    print(json.dumps(message, indent=2))
 
                     # Pass it to handler to that returns response to send back
                     # and broadcast to send to other connected clients
@@ -101,22 +104,27 @@ class Server:
                     if response:
                         client_socket.send(response)
                     if broadcast:
-                        # For leave game, we need to broadcast to the specific room
-                        # Since we remove client from room already in handle_message, 
-                        # extract game_id from broadcast message to find room
-                        msg_type = message.get('type')
-                        if msg_type == MSG_LEAVE_GAME:
-                            broadcast_data = json.loads(broadcast.decode('utf-8'))
+                        # Determine the type of broadcast and send to the correct room
+                        broadcast_data = json.loads(broadcast.decode('utf-8'))
+                        brod_type = broadcast_data['type']
+                        # For leave game, use the game_id in the payload
+                        if brod_type == MSG_PLAYER_LEFT_BROD:
                             game_id = broadcast_data['payload']['game_id']
                             self.broadcast_to_room(broadcast, game_id, exclude=client_socket)
+                        # For all *_BROD messages, broadcast to the sender's room
+                        elif brod_type.endswith('_BROD'):
+                            if client_address in self.client_rooms:
+                                game_id = self.client_rooms[client_address]
+                                self.broadcast_to_room(broadcast, game_id, exclude=client_socket)
                         else:
+                            # Fallback: broadcast to all clients in the same room
                             self.broadcast_to_clients(broadcast, client_address, exclude=client_socket)
 
                 except json.JSONDecodeError:
                     message_str = received_data.decode('utf-8')
                     print(f"Legacy message from {client_address}: {message_str}")
                     client_socket.send(received_data)
-                    
+
         except ConnectionResetError:
             print(f"Client {client_address} disconnected unexpectedly")
         except Exception as error:
@@ -126,7 +134,7 @@ class Server:
 
     def handle_message(self, message, client_address):
         """
-        Central handler function for each message type
+        Central handler function for each message type.
         """
         msg_type = message.get('type')
         payload = message.get('payload', {})
@@ -136,11 +144,16 @@ class Server:
         broadcast = None
 
         if msg_type == MSG_HOST_GAME:
-            response = self.handle_host_game(payload, client_address)
+            # Only ACK
+            response, broadcast = self.handle_host_game(payload, client_address)
         elif msg_type == MSG_JOIN_GAME:
             response, broadcast = self.handle_join_game(payload, client_address)
         elif msg_type == MSG_LEAVE_GAME:
             response, broadcast = self.handle_leave_game(client_address)
+        elif msg_type == MSG_LOCK_OBJECT:
+            response, broadcast = self.handle_lock_object(payload, client_address)
+        elif msg_type == MSG_RELEASE_OBJECT:
+            response, broadcast = self.handle_release_object(payload, client_address)
         else:
             response = serialize(MSG_ERROR, {'message': f'Unknown message type: {msg_type}'})
 
@@ -215,7 +228,7 @@ class Server:
         # Client must not be in any existing game rooms
         if client_address in self.client_rooms:
             response = serialize(MSG_ERROR, {'message': 'Already in a game room'})
-            return response
+            return response, None
         
         # Generate a random 6-character alphanumeric game ID
         import random
@@ -247,7 +260,7 @@ class Server:
         }
         
         response = serialize(MSG_HOST_GAME_ACK, response_payload)
-        return response
+        return response, None
 
     def handle_join_game(self, payload, client_address):
         """
@@ -308,7 +321,7 @@ class Server:
             }
             
             response = serialize(MSG_JOIN_GAME_ACK, response_payload)
-            broadcast = serialize(MSG_PLAYER_JOINED, broadcast_payload)
+            broadcast = serialize(MSG_PLAYER_JOINED_BROD, broadcast_payload)
             return response, broadcast
         else:
             response = serialize(MSG_ERROR, {'message': 'Failed to join game room'})
@@ -375,5 +388,77 @@ class Server:
             broadcast_payload['host_changed'] = False
 
         response = serialize(MSG_LEAVE_GAME_ACK, response_payload)
-        broadcast = serialize(MSG_PLAYER_LEFT, broadcast_payload)
+        broadcast = serialize(MSG_PLAYER_LEFT_BROD, broadcast_payload)
+        return response, broadcast
+
+    # -------------------------------------------------------------------------
+    
+    def handle_lock_object(self, payload, client_address):
+        """
+        Handle a request to lock an object.
+        Returns (ACK, BROD)
+        """
+        if client_address not in self.client_rooms:
+            response = serialize(MSG_ERROR, {'message': 'Not in any game room'})
+            return response, None
+    
+        game_id = self.client_rooms[client_address]
+        room = self.game_rooms[game_id]
+        object_id = payload.get('object_id')
+    
+        success, info = room.lock_object(object_id, client_address)
+        response_payload = {
+            'success': success,
+            'info': info,
+            'object_id': object_id,
+            'locked_objects': room.get_locked_objects()
+        }
+        response = serialize(MSG_LOCK_OBJECT_ACK, response_payload)
+    
+        # Only broadcast if successful
+        broadcast = None
+        if success:
+            broadcast_payload = {
+                'object_id': object_id,
+                'player': {"ip": client_address[0], "port": client_address[1]},
+                'info': info
+            }
+            broadcast = serialize(MSG_LOCK_OBJECT_BROD, broadcast_payload)
+    
+        return response, broadcast
+    
+    def handle_release_object(self, payload, client_address):
+        """
+        Handle a request to release an object.
+        Returns (ACK, BROD)
+        """
+        if client_address not in self.client_rooms:
+            response = serialize(MSG_ERROR, {'message': 'Not in any game room'})
+            return response, None
+    
+        game_id = self.client_rooms[client_address]
+        room = self.game_rooms[game_id]
+        object_id = payload.get('object_id')
+        position = payload.get('position')
+    
+        success, info = room.release_object(object_id, client_address, position)
+        response_payload = {
+            'success': success,
+            'info': info,
+            'object_id': object_id,
+            'locked_objects': room.get_locked_objects()
+        }
+        response = serialize(MSG_RELEASE_OBJECT_ACK, response_payload)
+    
+        # Only broadcast if successful
+        broadcast = None
+        if success:
+            broadcast_payload = {
+                'object_id': object_id,
+                'position': position,
+                'player': {"ip": client_address[0], "port": client_address[1]},
+                'info': info
+            }
+            broadcast = serialize(MSG_RELEASE_OBJECT_BROD, broadcast_payload)
+    
         return response, broadcast
