@@ -11,6 +11,7 @@ class GameRoom:
         self.players = [host_address]
         self.locked_objects = {}
         self.released_objects = {}
+        self.puzzle_solved_flag = False
 
     # -------------------------------------------------------------------------
     # Player Management
@@ -99,6 +100,21 @@ class GameRoom:
         self.released_objects[object_id] = position
         return True, {'message': f'Object {object_id} released'}
 
+    def move_locked_object(self, object_id, client_address, position):
+        """
+        Move a locked object to a new position.
+        Returns (success: bool, info: dict).
+        """
+        if not object_id or position is None:
+            return False, {'error': 'Missing object_id or position'}
+        if self.locked_objects.get(object_id) != client_address:
+            return False, {'error': f'Object {object_id} not locked by you'}
+        
+        # Add game logic here like (objectid, x, y) etc.
+        # Update the local server game room instance with that as well
+
+        return True, {'message': f'Object {object_id} moved', 'position': position}
+
     def get_locked_objects(self):
         return {
             obj: {"ip": addr[0], "port": addr[1]}
@@ -107,6 +123,20 @@ class GameRoom:
 
     def get_released_objects(self):
         return self.released_objects.copy()
+
+    # -------------------------------------------------------------------------
+    # Puzzle State
+
+    def puzzle_solved(self, client_address):
+        """
+        Mark the puzzle as solved.
+        Returns (success: bool, info: dict).
+        """
+        if self.puzzle_solved_flag:
+            return False, {'error': 'Puzzle already solved'}
+        
+        self.puzzle_solved_flag = True
+        return True, {'message': 'Puzzle solved!'}
 
     # -------------------------------------------------------------------------
     # Room Info

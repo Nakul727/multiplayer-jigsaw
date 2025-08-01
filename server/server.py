@@ -154,6 +154,11 @@ class Server:
             response, broadcast = self.handle_lock_object(payload, client_address)
         elif msg_type == MSG_RELEASE_OBJECT:
             response, broadcast = self.handle_release_object(payload, client_address)
+        elif msg_type == MSG_MOVE_LOCKED_OBJECT:
+            # Only broadcast
+            response, broadcast = self.handle_move_locked_object(payload, client_address)
+        elif msg_type == MSG_PUZZLE_SOLVED:
+            response, broadcast = self.handle_puzzle_solved(payload, client_address)
         else:
             response = serialize(MSG_ERROR, {'message': f'Unknown message type: {msg_type}'})
 
@@ -460,5 +465,63 @@ class Server:
                 'info': info
             }
             broadcast = serialize(MSG_RELEASE_OBJECT_BROD, broadcast_payload)
+    
+        return response, broadcast
+    
+    def handle_move_locked_object(self, payload, client_address):
+        """
+        Handle a request to move a locked object.
+        Returns (None, BROD) -- no ACK, only broadcast
+        """
+        if client_address not in self.client_rooms:
+            response = serialize(MSG_ERROR, {'message': 'Not in any game room'})
+            return response, None
+    
+        game_id = self.client_rooms[client_address]
+        room = self.game_rooms[game_id]
+        object_id = payload.get('object_id')
+        position = payload.get('position')
+    
+        success, info = room.move_locked_object(object_id, client_address, position)
+        # No ACK for move, only broadcast if successful
+        broadcast = None
+        if success:
+            broadcast_payload = {
+                'object_id': object_id,
+                'position': position,
+                'player': {"ip": client_address[0], "port": client_address[1]},
+                'info': info
+            }
+            broadcast = serialize(MSG_MOVE_LOCKED_OBJECT_BROD, broadcast_payload)
+    
+        return None, broadcast
+    
+    def handle_puzzle_solved(self, payload, client_address):
+        """
+        Handle a request to mark the puzzle as solved.
+        Returns (ACK, BROD)
+        """
+        if client_address not in self.client_rooms:
+            response = serialize(MSG_ERROR, {'message': 'Not in any game room'})
+            return response, None
+    
+        game_id = self.client_rooms[client_address]
+        room = self.game_rooms[game_id]
+    
+        success, info = room.puzzle_solved(client_address)
+        response_payload = {
+            'success': success,
+            'info': info
+        }
+        response = serialize(MSG_PUZZLE_SOLVED_ACK, response_payload)
+    
+        # Only broadcast if successful
+        broadcast = None
+        if success:
+            broadcast_payload = {
+                'player': {"ip": client_address[0], "port": client_address[1]},
+                'info': info
+            }
+            broadcast = serialize(MSG_PUZZLE_SOLVED_BROD, broadcast_payload)
     
         return response, broadcast
