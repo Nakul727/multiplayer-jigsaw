@@ -4,7 +4,7 @@ import sys
 import os
 import json
 
-sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..', 'shared'))
+sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'shared'))
 from protocol import *
 
 class NetworkManager:
@@ -17,6 +17,14 @@ class NetworkManager:
         self.connected = False
         self.listening = False
         self.listen_thread = None
+        # Game state management
+        self.game_id = None
+        self.game_name = None
+        self.current_players = 0
+        self.max_players = 0
+        self.image_url = None
+        self.is_host = False
+
 
     def connect(self, ip, port):
         """
@@ -136,6 +144,12 @@ class NetworkManager:
 
     def _handle_host_game_ack(self, payload):
         if payload.get('success'):
+            self.game_id = payload.get('game_id')
+            self.game_name = payload.get('game_name')
+            self.current_players = payload.get('current_players')
+            self.max_players = payload.get('max_players')
+            self.is_host = True
+
             print(f"[ACK] Game hosted successfully: {payload.get('game_id')}")
             print(f"[ACK] Room: {payload.get('game_name')} ({payload.get('current_players')}/{payload.get('max_players')})")
         else:
@@ -143,6 +157,12 @@ class NetworkManager:
 
     def _handle_join_game_ack(self, payload):
         if payload.get('success'):
+            self.game_id = payload.get('game_id')
+            self.game_name = payload.get('game_name')
+            self.current_players = payload.get('current_players')
+            self.max_players = payload.get('max_players')
+            self.image_url = payload.get('image_url') # <- HERE Storeing the image URL for joining clients????
+
             print(f"[ACK] Joined game: {payload.get('game_name')}")
             print(f"[ACK] Players: {payload.get('current_players')}/{payload.get('max_players')}")
         else:
@@ -151,6 +171,12 @@ class NetworkManager:
     def _handle_leave_game_ack(self, payload):
         if payload.get('success'):
             print("[ACK] Left game successfully")
+            # reset game state 
+            self.game_id = None
+            self.game_name = None
+            self.current_players = 0
+            self.max_players = 0
+            self.is_host = False
         else:
             print(f"[ACK] Failed to leave game: {payload.get('message')}")
 
@@ -208,6 +234,24 @@ class NetworkManager:
 
     # -------------------------------------------------------------------------
     # Client to Server Helpers
+
+    def host_game(self, game_name, max_players, image_url):
+        """Send a request to host a new game."""
+        payload = {
+            'game_name': game_name,
+            'max_players': max_players,
+            'image_url': image_url
+        }
+        return self.send_message(MSG_HOST_GAME, payload)
+
+    def join_game(self, game_id):
+        """Send a request to join an existing game."""
+        payload = {'game_id': game_id}
+        return self.send_message(MSG_JOIN_GAME, payload)
+    
+    def leave_game(self):
+        """Send a request to leave the current game."""
+        return self.send_message(MSG_LEAVE_GAME, {})
 
     def lock_object(self, object_id):
         """
