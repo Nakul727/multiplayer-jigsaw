@@ -94,7 +94,7 @@ class NetworkManager:
 
     # -------------------------------------------------------------------------
     # Server to Client Message Handlers
-    
+
     def _handle_received_message(self, message):
         """
         Process incoming messages using direct handler methods.
@@ -131,7 +131,7 @@ class NetworkManager:
             self._handle_error(payload)
         else:
             print(f"Unknown message type received: {msg_type}")
-
+    
     # Ack Handlers
 
     def _handle_host_game_ack(self, payload):
@@ -155,33 +155,50 @@ class NetworkManager:
             print(f"[ACK] Failed to leave game: {payload.get('message')}")
 
     def _handle_lock_object_ack(self, payload):
-        pass
+        if payload.get('success'):
+            print(f"[ACK] Object locked: {payload.get('object_id')}")
+        else:
+            print(f"[ACK] Failed to lock object: {payload.get('info', {}).get('error', '')}")
+        if 'locked_objects' in payload:
+            print(f"[ACK] Locked objects: {payload['locked_objects']}")
 
     def _handle_release_object_ack(self, payload):
-        pass
+        if payload.get('success'):
+            print(f"[ACK] Object released: {payload.get('object_id')}")
+        else:
+            print(f"[ACK] Failed to release object: {payload.get('info', {}).get('error', '')}")
+        if 'locked_objects' in payload:
+            print(f"[ACK] Locked objects: {payload['locked_objects']}")
 
     def _handle_puzzle_solved_ack(self, payload):
-        pass
+        if payload.get('success'):
+            print("[ACK] Puzzle solved!")
+        else:
+            print(f"[ACK] Failed to solve puzzle: {payload.get('info', {}).get('error', '')}")
 
     # Broadcast Handlers
 
     def _handle_player_joined_brod(self, payload):
-        pass
+        player_info = payload.get('player')
+        print(f"[BROD] Player joined: {player_info.get('ip')}:{player_info.get('port')}")
+        print(f"[BROD] Room now has {payload.get('current_players')} players")
 
     def _handle_player_left_brod(self, payload):
-        pass
+        player_info = payload.get('player')
+        print(f"[BROD] Player left: {player_info.get('ip')}:{player_info.get('port')}")
+        print(f"[BROD] Room now has {payload.get('current_players')} players")
 
     def _handle_lock_object_brod(self, payload):
-        pass
+        print(f"[BROD] Object locked: {payload.get('object_id')} by {payload.get('player')}")
 
     def _handle_release_object_brod(self, payload):
-        pass
+        print(f"[BROD] Object released: {payload.get('object_id')} at {payload.get('position')} by {payload.get('player')}")
 
     def _handle_move_locked_object_brod(self, payload):
-        pass
+        print(f"[BROD] Object moved: {payload.get('object_id')} to {payload.get('position')} by {payload.get('player')}")
 
     def _handle_puzzle_solved_brod(self, payload):
-        pass
+        print(f"[BROD] Puzzle solved by {payload.get('player')}")
 
     # Error
 
