@@ -5,11 +5,30 @@ from network_manager import NetworkManager
 from protocol import *
 
 def main():
+    # argument parsing 
+    # need at least 4 argumnts
+    if len(sys.argv) < 4:
+        print("Invalid number of arguments. Please provide all required parameters.")
+        print("     WTF R U DOING?!?!?!")
+        print("U need to do <server_ip> <port> <command> [whatever it is]")
+        print("\nSuggesstion for you:")
+        print("   python test.py 127.0.0.1 5555 host game_name 4 https://image.png")
+        sys.exit(1) # exit if arguments are incorrect
+
+    # 1. 127.0.0.1 
+    server_ip = sys.argv[1]
+    # 2. 5555
+    try:
+        server_port = int(sys.argv[2])
+    except ValueError:
+        print("gang the port must be an integer")
+        sys.exit(1)
+    # 3. host / join / leave
+    command = sys.argv[3].lower() # gotta make the command case-insensitive (just incase??)
+    # 4. whatever it is
+    command_args = sys.argv[4:]
+
     network = NetworkManager()
-    
-    server_ip = input("Enter server IP (default: localhost): ") or "localhost"
-    server_port = int(input("Enter server port (default: 5555): ") or "5555")
-    
     if not network.connect(server_ip, server_port):
         print("Failed to connect to server\n")
         return
@@ -31,14 +50,25 @@ def main():
                 continue
                 
             if command[0] == "host":
-                game_name = command[1] if len(command) > 1 else "Test Game"
-                max_players = int(command[2]) if len(command) > 2 else 4
+                if len(command_args) < 3:
+                    print("Usage: host <game_name> <max_players> <image_url>")
+                    return
+                game_name = command_args[0]
+                image_url = command_args[2]
+                try:
+                    max_players = int(command_args[1])
+                except ValueError:
+                    print("Error!!!: <max_players> must be an integer.")
+                    return
                 network.send_message(MSG_HOST_GAME, {
                     'game_name': game_name,
-                    'max_players': max_players
+                    'max_players': max_players,
+                    'image_url': image_url # added this
                 })
                 print()
                 
+
+
             elif command[0] == "join":
                 if len(command) < 2:
                     print("Usage: join <game_id>\n")
