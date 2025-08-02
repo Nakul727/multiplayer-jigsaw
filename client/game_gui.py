@@ -1,6 +1,6 @@
 import pygame
 import random
-from network_client import NetworkClient
+from network_manager import NetworkManager
 from protocol import *
 from puzzle import Puzzle
 
@@ -26,22 +26,27 @@ class GameGUI:
         pygame.display.set_caption("Multiplayer Jigsaw Puzzle") # should we change the name ?
         self.clock = pygame.time.Clock()
 
-        # get the image, TODO: need to use arrry to add link for more random img. REMEMBER TO CHANGE
+        # get the image, TODO: need to use array to add link for more random img. REMEMBER TO CHANGE
         image_url =  "https://i.pinimg.com/1200x/97/c3/e0/97c3e03d8bc65b3f277908c07289141f.jpg"
         self.puzzle = Puzzle(image_url, GRID_SIZE)
         self.pieces = self.puzzle.get_pieces()
         self.piece_rects = []
         
+        # ----------Grid State Management----------
+        # 2D grid to track which piece is in each position (None = empty, piece_id = occupied)
+        self.grid_state = [[None for _ in range(GRID_SIZE)] for _ in range(GRID_SIZE)]
+        # Track which pieces are correctly placed
+        self.correctly_placed_pieces = set()
+        
         # ----------drag & drop ----------
         self.selected_piece_index = None
-        self.is_dragging =  False
-        #track mouse 
+        self.is_dragging = False
+        # track mouse 
         self.mouse_offset_x = 0
         self.mouse_offset_y = 0
         
         # ----------snap functionality----------
         self.snap_threshold = 40  # pixels within which pieces will snap (increased for stronger snap)
-        self.snapped_pieces = {}  # track which pieces are in correct positions
         
         # ----------win condition----------
         self.puzzle_completed = False
@@ -64,10 +69,10 @@ class GameGUI:
             self.board_rect = pygame.Rect(0,0,0,0)
 
         # Networking
-        self.network_client = NetworkClient()
-        self.network_client.connect()
+        self.network_client = NetworkManager()
+        self.network_client.connect("localhost", 8888)  # Default values, should be configurable
 
-    # scxatter pieces 
+    # scatter pieces 
     def _scatter_pieces(self):
         self.piece_rects = []
         for piece_data in self.pieces:
@@ -87,6 +92,45 @@ class GameGUI:
         correct_y = self.board_rect.top + row * piece_height
         
         return (correct_x, correct_y)
+    
+    def get_piece_grid_coordinates(self, piece_id):
+        """Get the correct grid coordinates (row, col) for a piece"""
+        piece_index = int(piece_id.split('_')[1])
+        return (piece_index // GRID_SIZE, piece_index % GRID_SIZE)
+    
+    def update_grid_state(self, piece_id, new_grid_row, new_grid_col, old_grid_row=None, old_grid_col=None):
+        """Update the grid state when a piece moves"""
+        # Clear old position if provided
+        if old_grid_row is not None and old_grid_col is not None:
+            if (0 <= old_grid_row < GRID_SIZE and 0 <= old_grid_col < GRID_SIZE):
+                self.grid_state[old_grid_row][old_grid_col] = None
+        
+        # Set new position if valid
+        if (0 <= new_grid_row < GRID_SIZE and 0 <= new_grid_col < GRID_SIZE):
+            self.grid_state[new_grid_row][new_grid_col] = piece_id
+            
+            # Check if piece is in correct position
+            correct_row, correct_col = self.get_piece_grid_coordinates(piece_id)
+            if new_grid_row == correct_row and new_grid_col == correct_col:
+                self.correctly_placed_pieces.add(piece_id)
+            else:
+                self.correctly_placed_pieces.discard(piece_id)
+        else:
+            # Piece is off the grid
+            self.correctly_placed_pieces.discard(piece_id)
+    
+    def get_grid_state_for_server(self):
+        """Get a serializable grid state for server communication"""
+        return {
+            'grid': self.grid_state,
+            'correctly_placed': list(self.correctly_placed_pieces),
+            'completion_percentage': len(self.correctly_placed_pieces) / len(self.pieces) * 100,
+            'is_completed': len(self.correctly_placed_pieces) == len(self.pieces)
+        }
+    
+    def is_puzzle_completed(self):
+        """Simple check if puzzle is completed"""
+        return len(self.correctly_placed_pieces) == len(self.pieces)
     
     def get_nearest_grid_position_from_cursor(self, cursor_pos):
         """Find the nearest grid position to the cursor location"""
@@ -151,27 +195,43 @@ class GameGUI:
         piece_rect = self.piece_rects[piece_index]
         
         if self.is_near_grid_position(piece_rect):
+            # Get old grid position if piece was already on grid
+            piece_id = self.pieces[piece_index]['id']
+            old_grid_pos = self.find_piece_in_grid(piece_id)
+            
+            # Get new grid position
             snap_x, snap_y, grid_row, grid_col = self.get_nearest_grid_position(piece_rect)
             self.piece_rects[piece_index].x = snap_x
             self.piece_rects[piece_index].y = snap_y
             
-            # Check if this is the correct position for this piece
-            piece_id = self.pieces[piece_index]['id']
-            piece_index_id = int(piece_id.split('_')[1])
-            correct_row = piece_index_id // GRID_SIZE
-            correct_col = piece_index_id % GRID_SIZE
+            # Update grid state
+            old_row, old_col = old_grid_pos if old_grid_pos else (None, None)
+            self.update_grid_state(piece_id, grid_row, grid_col, old_row, old_col)
             
-            if grid_row == correct_row and grid_col == correct_col:
-                self.snapped_pieces[piece_id] = True
+            # Check if piece is correctly placed
+            if piece_id in self.correctly_placed_pieces:
                 print(f"Piece {piece_id} snapped into CORRECT position!")
             else:
-                # Remove from snapped pieces if it was there before
-                if piece_id in self.snapped_pieces:
-                    del self.snapped_pieces[piece_id]
                 print(f"Piece {piece_id} snapped to grid position ({grid_row}, {grid_col})")
             
             return True
+        else:
+            # Piece moved off grid - remove from grid state
+            piece_id = self.pieces[piece_index]['id']
+            old_grid_pos = self.find_piece_in_grid(piece_id)
+            if old_grid_pos:
+                old_row, old_col = old_grid_pos
+                self.update_grid_state(piece_id, -1, -1, old_row, old_col)  # -1 indicates off-grid
+        
         return False
+    
+    def find_piece_in_grid(self, piece_id):
+        """Find the current grid position of a piece, returns (row, col) or None"""
+        for row in range(GRID_SIZE):
+            for col in range(GRID_SIZE):
+                if self.grid_state[row][col] == piece_id:
+                    return (row, col)
+        return None
 
 # DA MAIN GAME LOOP 
     def run(self):
@@ -184,7 +244,7 @@ class GameGUI:
                 if event.type == pygame.QUIT:
                     running = False
                     if self.network_client:
-                        self.network_client.close()
+                        self.network_client.disconnect()
 
                 elif event.type == pygame.MOUSEBUTTONDOWN:
                     if event.button == 1: # Left mouse button down
@@ -201,8 +261,8 @@ class GameGUI:
                                     'action': INPUT_ACTION_LOCK_OBJECT,
                                     'object_id': piece_id
                                 }
-                                response = self.network_client.send(MSG_PLAYER_INPUT , payload)
-                                print(f"Server response to lock: {response}")
+                                success = self.network_client.send_message(MSG_PLAYER_INPUT, payload)
+                                print(f"Server response to lock: {success}")
                                 # need to check if lock was successful
                                 
                                 # meowouse math, so the piece sticks to our cursor nicely
@@ -229,9 +289,16 @@ class GameGUI:
                             snapped = self.snap_piece_to_position(self.selected_piece_index)
                             
                             # Check if puzzle is completed after snapping
-                            if snapped:
-                                self.check_puzzle_completion()
+                            if snapped and self.is_puzzle_completed():
+                                self.puzzle_completed = True
+                                self.win_time = pygame.time.get_ticks()
+                                completion_time = (self.win_time - self.start_time) / 1000
+                                print("🎉 PUZZLE COMPLETED! 🎉")
+                                print(f"⏱️  Completion time: {completion_time:.1f} seconds")
+                                self.send_completion_notification()
                             
+                            # Send comprehensive state to server
+                            grid_state = self.get_grid_state_for_server()
                             payload = {
                                 'action': INPUT_ACTION_RELEASE_OBJECT, 
                                 'object_id': piece_id,
@@ -239,10 +306,11 @@ class GameGUI:
                                 'position': {
                                     'x': self.piece_rects[self.selected_piece_index].x,
                                     'y': self.piece_rects[self.selected_piece_index].y
-                                }
+                                },
+                                'grid_state': grid_state
                             }
-                            response = self.network_client.send(MSG_PLAYER_INPUT , payload)
-                            print(f"Server response to release: {response}")
+                            success = self.network_client.send_message(MSG_PLAYER_INPUT, payload)
+                            print(f"Server response to release: {success}")
 
                         # no longer dragging
                         self.is_dragging = False
@@ -277,7 +345,7 @@ class GameGUI:
                         # Quit the game
                         running = False
                         if self.network_client:
-                            self.network_client.close()
+                            self.network_client.disconnect()
 
             self.draw_game()
             pygame.display.flip()
@@ -352,7 +420,7 @@ class GameGUI:
             self.small_font = pygame.font.Font(None, 24)
         
         # Calculate progress
-        progress = len(self.snapped_pieces) / len(self.pieces) * 100
+        progress = len(self.correctly_placed_pieces) / len(self.pieces) * 100
         
         # Calculate elapsed time - stop timer when puzzle is completed
         if self.puzzle_completed and self.win_time:
@@ -370,7 +438,7 @@ class GameGUI:
         self.screen.blit(timer_text, (10, 50))
         
         # Draw pieces count
-        pieces_text = self.small_font.render(f"Pieces: {len(self.snapped_pieces)}/{len(self.pieces)}", True, COLOR_WHITE)
+        pieces_text = self.small_font.render(f"Pieces: {len(self.correctly_placed_pieces)}/{len(self.pieces)}", True, COLOR_WHITE)
         self.screen.blit(pieces_text, (10, 75))
         
         # Draw progress bar
@@ -434,7 +502,12 @@ class GameGUI:
         self.puzzle_completed = False
         self.win_time = None
         self.start_time = pygame.time.get_ticks()
-        self.snapped_pieces = {}
+        
+        # Reset grid state
+        self.grid_state = [[None for _ in range(GRID_SIZE)] for _ in range(GRID_SIZE)]
+        self.correctly_placed_pieces = set()
+        
+        # Reset drag state
         self.is_dragging = False
         self.selected_piece_index = None
         
@@ -443,64 +516,23 @@ class GameGUI:
         
         print("✅ Puzzle restarted!")
 
-    def check_puzzle_completion(self):
-        """Check if all pieces are in their correct positions"""
-        if not self.puzzle_completed:
-            # Count how many pieces are actually in their correct positions right now
-            correctly_placed = 0
+    def send_completion_notification(self):
+        """Send puzzle completion notification to server"""
+        if self.network_client and self.puzzle_completed:
+            completion_time = (self.win_time - self.start_time) / 1000
+            grid_state = self.get_grid_state_for_server()
             
-            for i, piece_data in enumerate(self.pieces):
-                piece_id = piece_data['id']
-                piece_rect = self.piece_rects[i]
-                piece_index_id = int(piece_id.split('_')[1])
-                
-                # Calculate the correct position for this piece
-                correct_row = piece_index_id // GRID_SIZE
-                correct_col = piece_index_id % GRID_SIZE
-                
-                # Calculate which grid position this piece is currently in
-                piece_width, piece_height = self.puzzle.piece_size
-                piece_center_x = piece_rect.x + piece_rect.width // 2
-                piece_center_y = piece_rect.y + piece_rect.height // 2
-                
-                # Check if piece is within the board area
-                if self.board_rect.collidepoint(piece_center_x, piece_center_y):
-                    relative_x = piece_center_x - self.board_rect.left
-                    relative_y = piece_center_y - self.board_rect.top
-                    
-                    current_col = int(relative_x // piece_width)
-                    current_row = int(relative_y // piece_height)
-                    
-                    # Check if piece is in correct position and properly snapped
-                    if (current_row == correct_row and current_col == correct_col and
-                        piece_rect.x == self.board_rect.left + correct_col * piece_width and
-                        piece_rect.y == self.board_rect.top + correct_row * piece_height):
-                        correctly_placed += 1
-            
-            # Only complete if ALL pieces are correctly placed
-            if correctly_placed == len(self.pieces):
-                self.puzzle_completed = True
-                self.win_time = pygame.time.get_ticks()
-                completion_time = (self.win_time - self.start_time) / 1000  # Convert to seconds
-                
-                print("🎉 PUZZLE COMPLETED! 🎉")
-                print(f"⏱️  Completion time: {completion_time:.1f} seconds")
-                print(f"🧩 Total pieces: {len(self.pieces)}")
-                
-                # Send completion notification to server
-                if self.network_client:
-                    payload = {
-                        'action': 'PUZZLE_COMPLETED',
-                        'completion_time': completion_time,
-                        'total_pieces': len(self.pieces)
-                    }
-                    try:
-                        response = self.network_client.send('MSG_GAME_EVENT', payload)
-                        print(f"Server notified of completion: {response}")
-                    except:
-                        print("Could not notify server of completion")
-                
-                return True
+            payload = {
+                'action': 'PUZZLE_COMPLETED',
+                'completion_time': completion_time,
+                'total_pieces': len(self.pieces),
+                'grid_state': grid_state
+            }
+            try:
+                success = self.network_client.send_message('MSG_GAME_EVENT', payload)
+                print(f"Server notified of completion: {success}")
+            except:
+                print("Could not notify server of completion")
         return False
 
     def draw_grid_lines(self):
