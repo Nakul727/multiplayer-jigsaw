@@ -283,8 +283,6 @@ class GameGUI:
             pygame.display.flip()
             self.clock.tick(60)
 
-        pygame.quit()
-
     # draw game and grid
     def draw_game(self):
         self.screen.fill(COLOR_BACKGROUND)
