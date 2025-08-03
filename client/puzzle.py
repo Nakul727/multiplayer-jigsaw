@@ -37,7 +37,7 @@ class Puzzle:
             pil_image = Image.open(image_file)
 
             # calculate the piecees dimension 🤓👆➕➖✖➗ (idk if we should scale it down)
-            # Resize image to 500x500 for all image 
+            # Resize image to 500x500 for all
             desired_board_size = 500
             pil_image = pil_image.resize((desired_board_size, desired_board_size), Image.LANCZOS)
 
