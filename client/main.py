@@ -72,7 +72,7 @@ def main():
     # Get game data from network manager
     image_url = network.image_url
     piece_positions = network.piece_positions
-    if not image_url or piece_positions:
+    if not image_url or not piece_positions:
         print("Error: Could not retrieve image_url or piece positions from server")
         network.disconnect()
         sys.exit(1)

@@ -16,49 +16,73 @@ COLOR_BLACK = (0, 0, 0)
 COLOR_BACKGROUND = (30, 30, 30)
 
 class GameGUI:
-    def __init__(self, network_manager: NetworkManager, image_url: str):
+    def __init__(self, network_manager: NetworkManager, image_url: str, piece_positions=None):
         pygame.init()
         self.screen = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
-        pygame.display.set_caption("Multiplayer Jigsaw Puzzle")
+        pygame.display.set_caption("Multiplayer Jigsaw Puzzle - 3x3")
         self.clock = pygame.time.Clock()
 
         # Use the provided image_url to create the puzzle
-        self.puzzle = Puzzle(image_url, GRID_SIZE)
+        self.puzzle = Puzzle(image_url)
         self.pieces = self.puzzle.get_pieces()
         self.piece_rects = []
         
         # --- Drag & Drop State ---
         self.selected_piece_index = None
-        self.is_dragging =  False
+        self.is_dragging = False
         self.mouse_offset_x = 0
         self.mouse_offset_y = 0
         
         if self.pieces:
             piece_width, piece_height = self.pieces[0]['image'].get_size()
-            board_width  = piece_width * GRID_SIZE
-            board_height = piece_height * GRID_SIZE
+            board_width = piece_width * 3  # Always 3x3
+            board_height = piece_height * 3
             self.board_rect = pygame.Rect(
-                (WINDOW_WIDTH  - board_width) // 2,
-                (WINDOW_HEIGHT -  board_height) // 2,
+                (WINDOW_WIDTH - board_width) // 2,
+                (WINDOW_HEIGHT - board_height) // 2,
                 board_width,
                 board_height
             )
-            self._scatter_pieces()
+            # Set piece positions from server data instead of scattering
+            self._set_piece_positions(piece_positions)
         else:
             print("Failed to load puzzle pieces. Game cannot start.")
-            self.board_rect = pygame.Rect(0,0,0,0)
+            self.board_rect = pygame.Rect(0, 0, 0, 0)
 
         # Use the network_manager passed from main.py
         self.network_manager = network_manager
 
-    def _scatter_pieces(self):
-        """Randomly places pieces on the screen."""
+    def _set_piece_positions(self, server_positions):
+        """Set piece positions from server data instead of random scatter."""
         self.piece_rects = []
-        for piece_data in self.pieces:
-            piece_image = piece_data['image']
-            random_x = random.randint(0, WINDOW_WIDTH - piece_image.get_width())
-            random_y = random.randint(0, WINDOW_HEIGHT - piece_image.get_height())
-            self.piece_rects.append(piece_image.get_rect(topleft=(random_x, random_y)))
+        
+        if server_positions:
+            print(f"Using server-provided piece positions for {len(server_positions)} pieces")
+            
+            # Position pieces according to server data
+            for piece_data in self.pieces:
+                piece_id = piece_data['id']
+                piece_image = piece_data['image']
+                
+                # Get position from server data
+                if piece_id in server_positions:
+                    server_pos = server_positions[piece_id]
+                    x, y = server_pos['x'], server_pos['y']
+                else:
+                    # Fallback position if server data missing
+                    print(f"Warning: No server position for piece {piece_id}, using fallback")
+                    x, y = 50, 50
+                
+                self.piece_rects.append(piece_image.get_rect(topleft=(x, y)))
+        else:
+            print("No server positions provided, using fallback positioning")
+            # Fallback positioning if no server positions
+            for i, piece_data in enumerate(self.pieces):
+                piece_image = piece_data['image']
+                # Simple fallback positioning
+                x = 10 + (i * 25) % (WINDOW_WIDTH - piece_image.get_width() - 10)
+                y = 80 + (i * 35) % (WINDOW_HEIGHT - piece_image.get_height() - 10)
+                self.piece_rects.append(piece_image.get_rect(topleft=(x, y)))
 
     def run(self):
         """The main game loop."""
@@ -133,15 +157,15 @@ class GameGUI:
         if not self.pieces:
             return
         
-        piece_width, piece_height = self.puzzle.piece_size
+        piece_width, piece_height = self.puzzle.get_piece_size()
         
         for i in range(GRID_SIZE + 1):
             # Vertical lines
             start_pos_v = (self.board_rect.left + i * piece_width, self.board_rect.top)
-            end_pos_v = (self.board_rect.left   + i * piece_width, self.board_rect.bottom)
+            end_pos_v = (self.board_rect.left + i * piece_width, self.board_rect.bottom)
             pygame.draw.line(self.screen, COLOR_GREY, start_pos_v, end_pos_v, 2)
             
             # Horizontal lines
             start_pos_h = (self.board_rect.left, self.board_rect.top + i * piece_height)
-            end_pos_h = (self.board_rect.right, self.board_rect.top  + i * piece_height)
+            end_pos_h = (self.board_rect.right, self.board_rect.top + i * piece_height)
             pygame.draw.line(self.screen, COLOR_GREY, start_pos_h, end_pos_h, 2)

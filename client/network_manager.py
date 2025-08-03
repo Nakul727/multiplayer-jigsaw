@@ -161,7 +161,6 @@ class NetworkManager:
 
             print(f"[ACK] Game hosted successfully: {self.game_id}")
             print(f"[ACK] Room: {self.game_name} ({self.current_players}/{self.max_players})")
-            print(f"[ACK] Difficulty: {self.difficulty}")
             print(f"[ACK] Piece positions: {len(self.piece_positions)} pieces")
         else:
             print(f"[ACK] Failed to host game: {payload.get('message')}")
@@ -182,7 +181,6 @@ class NetworkManager:
             print(f"[ACK] Joined game: {self.game_name}")
             print(f"[ACK] Players: {self.current_players}/{self.max_players}")
             print(f"[ACK] Image URL: {self.image_url}")
-            print(f"[ACK] Difficulty: {self.difficulty}")
             print(f"[ACK] Piece positions: {len(self.piece_positions)} pieces")
         else:
             print(f"[ACK] Failed to join game: {payload.get('message')}")
