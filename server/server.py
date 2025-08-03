@@ -507,8 +507,12 @@ class Server:
     
         game_id = self.client_rooms[client_address]
         room = self.game_rooms[game_id]
+        
+        # Extract completion data from payload
+        completion_time = payload.get('completion_time')
+        total_pieces = payload.get('total_pieces')
     
-        success, info = room.puzzle_solved(client_address)
+        success, info = room.puzzle_solved(client_address, completion_time, total_pieces)
         response_payload = {
             'success': success,
             'info': info
@@ -520,6 +524,8 @@ class Server:
         if success:
             broadcast_payload = {
                 'player': {"ip": client_address[0], "port": client_address[1]},
+                'completion_time': completion_time,
+                'total_pieces': total_pieces,
                 'info': info
             }
             broadcast = serialize(MSG_PUZZLE_SOLVED_BROD, broadcast_payload)

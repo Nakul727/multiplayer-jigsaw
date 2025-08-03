@@ -1,5 +1,11 @@
 import pygame
 import random
+import sys
+import os
+
+# Add shared directory to path for protocol imports
+sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'shared'))
+
 from network_manager import NetworkManager
 from protocol import *
 from puzzle import Puzzle
@@ -32,6 +38,13 @@ class GameGUI:
         self.pieces = self.puzzle.get_pieces()
         self.piece_rects = []
         
+        # Cache piece dimensions for reuse
+        self._piece_width = None
+        self._piece_height = None
+        
+        # Initialize fonts once
+        self._init_fonts()
+        
         # ----------Grid State Management----------
         # 2D grid to track which piece is in each position (None = empty, piece_id = occupied)
         self.grid_state = [[None for _ in range(GRID_SIZE)] for _ in range(GRID_SIZE)]
@@ -53,8 +66,17 @@ class GameGUI:
         self.win_time = None
         self.start_time = pygame.time.get_ticks()  # Track game start time
         
+        # Track if completion was by another player
+        self.completion_by_other_player = False
+        self.other_player_name = None
+        self.other_player_completion_time = None
+        self.other_player_total_pieces = None
+        
+        # Track current player count for UI
+        self.current_players = 1  # Start with 1 (this player)
+        
         if self.pieces:
-            piece_width, piece_height = self.pieces[0]['image'].get_size()
+            piece_width, piece_height = self.get_piece_size()
             board_width  = piece_width * GRID_SIZE
             board_height = piece_height * GRID_SIZE
             self.board_rect = pygame.Rect(
@@ -70,7 +92,37 @@ class GameGUI:
 
         # Networking
         self.network_client = NetworkManager()
-        self.network_client.connect("localhost", 8888)  # Default values, should be configurable
+        self.network_client.set_game_gui(self)  # Allow network manager to communicate back
+        if not self.network_client.connect("localhost", 5555):
+            print("Failed to connect to server. Running in offline mode.")
+            self.network_client = None
+        else:
+            # For now, automatically host a game. In a full implementation,
+            # you might want to show a menu to choose host/join
+            self.setup_multiplayer_game()
+    
+    def _init_fonts(self):
+        """Initialize all fonts once to avoid repeated initialization"""
+        pygame.font.init()
+        self.font = pygame.font.Font(None, 36)
+        self.small_font = pygame.font.Font(None, 24)
+        self.big_font = pygame.font.Font(None, 72)
+        self.medium_font = pygame.font.Font(None, 48)
+    
+    def get_piece_size(self):
+        """Get piece dimensions with caching to avoid repeated calculations"""
+        if self._piece_width is None or self._piece_height is None:
+            if self.pieces:
+                self._piece_width, self._piece_height = self.puzzle.piece_size
+            else:
+                self._piece_width, self._piece_height = 0, 0
+        return self._piece_width, self._piece_height
+    
+    def _disconnect_network(self):
+        """Centralized network disconnection logic"""
+        if self.network_client and self.network_client.connected:
+            self.network_client.leave_game()  # Leave game before disconnecting
+            self.network_client.disconnect()
 
     # scatter pieces 
     def _scatter_pieces(self):
@@ -87,7 +139,7 @@ class GameGUI:
         row = piece_index // GRID_SIZE
         col = piece_index % GRID_SIZE
         
-        piece_width, piece_height = self.puzzle.piece_size
+        piece_width, piece_height = self.get_piece_size()
         correct_x = self.board_rect.left + col * piece_width
         correct_y = self.board_rect.top + row * piece_height
         
@@ -134,7 +186,7 @@ class GameGUI:
     
     def get_nearest_grid_position_from_cursor(self, cursor_pos):
         """Find the nearest grid position to the cursor location"""
-        piece_width, piece_height = self.puzzle.piece_size
+        piece_width, piece_height = self.get_piece_size()
         
         # Find nearest grid position within the board based on cursor
         relative_x = cursor_pos[0] - self.board_rect.left
@@ -152,7 +204,7 @@ class GameGUI:
     
     def get_nearest_grid_position(self, piece_rect):
         """Find the nearest grid position to the piece's current location"""
-        piece_width, piece_height = self.puzzle.piece_size
+        piece_width, piece_height = self.get_piece_size()
         
         # Calculate which grid cell the piece center is closest to
         piece_center_x = piece_rect.x + piece_rect.width // 2
@@ -243,8 +295,7 @@ class GameGUI:
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     running = False
-                    if self.network_client:
-                        self.network_client.disconnect()
+                    self._disconnect_network()
 
                 elif event.type == pygame.MOUSEBUTTONDOWN:
                     if event.button == 1: # Left mouse button down
@@ -254,16 +305,14 @@ class GameGUI:
                                 self.is_dragging = True
                                 self.selected_piece_index = i
                                 
-                                # get pieceid and send lock request (idk about lock)
+                                # get pieceid and send lock request
                                 piece_id = self.pieces[i]['id']
                                 print(f"Attempting to lock {piece_id}")
-                                payload = {
-                                    'action': INPUT_ACTION_LOCK_OBJECT,
-                                    'object_id': piece_id
-                                }
-                                success = self.network_client.send_message(MSG_PLAYER_INPUT, payload)
-                                print(f"Server response to lock: {success}")
-                                # need to check if lock was successful
+                                if self.network_client:
+                                    success = self.network_client.lock_object(piece_id)
+                                    print(f"Lock request sent: {success}")
+                                else:
+                                    print("No network connection - running offline")
                                 
                                 # meowouse math, so the piece sticks to our cursor nicely
                                 self.mouse_offset_x = mouse_pos[0] - self.piece_rects[i].x
@@ -292,25 +341,20 @@ class GameGUI:
                             if snapped and self.is_puzzle_completed():
                                 self.puzzle_completed = True
                                 self.win_time = pygame.time.get_ticks()
+                                self.completion_by_other_player = False  # This player completed it
                                 completion_time = (self.win_time - self.start_time) / 1000
                                 print("🎉 PUZZLE COMPLETED! 🎉")
                                 print(f"⏱️  Completion time: {completion_time:.1f} seconds")
                                 self.send_completion_notification()
-                            
-                            # Send comprehensive state to server
-                            grid_state = self.get_grid_state_for_server()
-                            payload = {
-                                'action': INPUT_ACTION_RELEASE_OBJECT, 
-                                'object_id': piece_id,
-                                'snapped': snapped,
-                                'position': {
-                                    'x': self.piece_rects[self.selected_piece_index].x,
-                                    'y': self.piece_rects[self.selected_piece_index].y
-                                },
-                                'grid_state': grid_state
-                            }
-                            success = self.network_client.send_message(MSG_PLAYER_INPUT, payload)
-                            print(f"Server response to release: {success}")
+
+                            # Send release to server
+                            if self.network_client:
+                                piece_rect = self.piece_rects[self.selected_piece_index]
+                                position = {'x': piece_rect.x, 'y': piece_rect.y}
+                                success = self.network_client.release_object(piece_id, position)
+                                print(f"Release request sent: {success}")
+                            else:
+                                print("No network connection - running offline")
 
                         # no longer dragging
                         self.is_dragging = False
@@ -336,6 +380,12 @@ class GameGUI:
                         
                         self.piece_rects[self.selected_piece_index].x = new_x
                         self.piece_rects[self.selected_piece_index].y = new_y
+                        
+                        # Send move update to server for real-time updates
+                        if self.network_client and self.selected_piece_index is not None:
+                            piece_id = self.pieces[self.selected_piece_index]['id']
+                            position = {'x': new_x, 'y': new_y}
+                            self.network_client.move_locked_object(piece_id, position)
 
                 elif event.type == pygame.KEYDOWN:
                     if event.key == pygame.K_r and self.puzzle_completed:
@@ -344,8 +394,7 @@ class GameGUI:
                     elif event.key == pygame.K_ESCAPE:
                         # Quit the game
                         running = False
-                        if self.network_client:
-                            self.network_client.disconnect()
+                        self._disconnect_network()
 
             self.draw_game()
             pygame.display.flip()
@@ -385,7 +434,7 @@ class GameGUI:
         # Use cursor position to determine snap zone for better alignment
         if self.board_rect.collidepoint(mouse_pos):
             snap_x, snap_y, grid_row, grid_col = self.get_nearest_grid_position_from_cursor(mouse_pos)
-            piece_width, piece_height = self.puzzle.piece_size
+            piece_width, piece_height = self.get_piece_size()
             
             # Draw a larger, more visible snap zone
             snap_zone = pygame.Rect(snap_x - self.snap_threshold // 2, 
@@ -413,12 +462,6 @@ class GameGUI:
 
     def draw_ui(self):
         """Draw game UI elements like progress and timer"""
-        # Initialize font if not already done
-        if not hasattr(self, 'font'):
-            pygame.font.init()
-            self.font = pygame.font.Font(None, 36)
-            self.small_font = pygame.font.Font(None, 24)
-        
         # Calculate progress
         progress = len(self.correctly_placed_pieces) / len(self.pieces) * 100
         
@@ -441,11 +484,21 @@ class GameGUI:
         pieces_text = self.small_font.render(f"Pieces: {len(self.correctly_placed_pieces)}/{len(self.pieces)}", True, COLOR_WHITE)
         self.screen.blit(pieces_text, (10, 75))
         
+        # Draw network status
+        if self.network_client and self.network_client.connected:
+            if hasattr(self, 'current_players'):
+                network_text = self.small_font.render(f"🌐 Online ({self.current_players} players)", True, COLOR_SNAPPED)
+            else:
+                network_text = self.small_font.render("🌐 Online", True, COLOR_SNAPPED)
+        else:
+            network_text = self.small_font.render("📴 Offline", True, COLOR_GREY)
+        self.screen.blit(network_text, (10, 100))
+        
         # Draw progress bar
         bar_width = 200
         bar_height = 20
         bar_x = 10
-        bar_y = 100
+        bar_y = 125  # Moved down to account for network status
         
         # Background bar
         pygame.draw.rect(self.screen, COLOR_GREY, (bar_x, bar_y, bar_width, bar_height))
@@ -466,30 +519,52 @@ class GameGUI:
         overlay.fill((0, 0, 0))
         self.screen.blit(overlay, (0, 0))
         
-        # Initialize fonts for win screen
-        if not hasattr(self, 'big_font'):
-            self.big_font = pygame.font.Font(None, 72)
-            self.medium_font = pygame.font.Font(None, 48)
+        if self.completion_by_other_player:
+            # Another player completed the puzzle
+            winner_name = self.other_player_name or "Another Player"
+            completion_time = self.other_player_completion_time or 0
+            total_pieces = self.other_player_total_pieces or len(self.pieces)
+            
+            # Draw winner announcement
+            win_text = self.big_font.render(f"🎉 {winner_name} WINS! 🎉", True, COLOR_SNAPPED)
+            win_rect = win_text.get_rect(center=(WINDOW_WIDTH // 2, WINDOW_HEIGHT // 2 - 80))
+            self.screen.blit(win_text, win_rect)
+            
+            # Draw completion details
+            time_text = self.medium_font.render(f"Completion Time: {completion_time:.1f}s", True, COLOR_WHITE)
+            time_rect = time_text.get_rect(center=(WINDOW_WIDTH // 2, WINDOW_HEIGHT // 2 - 20))
+            self.screen.blit(time_text, time_rect)
+            
+            # Draw pieces info
+            pieces_text = self.medium_font.render(f"Pieces Completed: {total_pieces}", True, COLOR_WHITE)
+            pieces_rect = pieces_text.get_rect(center=(WINDOW_WIDTH // 2, WINDOW_HEIGHT // 2 + 20))
+            self.screen.blit(pieces_text, pieces_rect)
+            
+            # Draw congratulations message
+            congrats_text = self.font.render("🎊 Congratulations to the winner! 🎊", True, COLOR_SNAP_ZONE)
+            congrats_rect = congrats_text.get_rect(center=(WINDOW_WIDTH // 2, WINDOW_HEIGHT // 2 + 60))
+            self.screen.blit(congrats_text, congrats_rect)
+            
+        else:
+            # You completed the puzzle
+            completion_time = (self.win_time - self.start_time) / 1000
+            
+            # Draw celebration text
+            win_text = self.big_font.render("🎉 YOU WIN! 🎉", True, COLOR_SNAPPED)
+            win_rect = win_text.get_rect(center=(WINDOW_WIDTH // 2, WINDOW_HEIGHT // 2 - 60))
+            self.screen.blit(win_text, win_rect)
+            
+            # Draw completion time
+            time_text = self.medium_font.render(f"Your Time: {completion_time:.1f} seconds", True, COLOR_WHITE)
+            time_rect = time_text.get_rect(center=(WINDOW_WIDTH // 2, WINDOW_HEIGHT // 2))
+            self.screen.blit(time_text, time_rect)
+            
+            # Draw pieces info
+            pieces_text = self.medium_font.render(f"Pieces: {len(self.pieces)}", True, COLOR_WHITE)
+            pieces_rect = pieces_text.get_rect(center=(WINDOW_WIDTH // 2, WINDOW_HEIGHT // 2 + 40))
+            self.screen.blit(pieces_text, pieces_rect)
         
-        # Calculate completion time
-        completion_time = (self.win_time - self.start_time) / 1000
-        
-        # Draw celebration text
-        win_text = self.big_font.render("🎉 PUZZLE COMPLETED! 🎉", True, COLOR_SNAPPED)
-        win_rect = win_text.get_rect(center=(WINDOW_WIDTH // 2, WINDOW_HEIGHT // 2 - 60))
-        self.screen.blit(win_text, win_rect)
-        
-        # Draw completion time
-        time_text = self.medium_font.render(f"Time: {completion_time:.1f} seconds", True, COLOR_WHITE)
-        time_rect = time_text.get_rect(center=(WINDOW_WIDTH // 2, WINDOW_HEIGHT // 2))
-        self.screen.blit(time_text, time_rect)
-        
-        # Draw pieces info
-        pieces_text = self.medium_font.render(f"Pieces: {len(self.pieces)}", True, COLOR_WHITE)
-        pieces_rect = pieces_text.get_rect(center=(WINDOW_WIDTH // 2, WINDOW_HEIGHT // 2 + 40))
-        self.screen.blit(pieces_text, pieces_rect)
-        
-        # Draw restart instruction
+        # Draw restart instruction (common for both scenarios)
         restart_text = self.font.render("Press R to restart or ESC to quit", True, COLOR_SNAP_ZONE)
         restart_rect = restart_text.get_rect(center=(WINDOW_WIDTH // 2, WINDOW_HEIGHT // 2 + 100))
         self.screen.blit(restart_text, restart_rect)
@@ -502,6 +577,12 @@ class GameGUI:
         self.puzzle_completed = False
         self.win_time = None
         self.start_time = pygame.time.get_ticks()
+        
+        # Reset completion tracking
+        self.completion_by_other_player = False
+        self.other_player_name = None
+        self.other_player_completion_time = None
+        self.other_player_total_pieces = None
         
         # Reset grid state
         self.grid_state = [[None for _ in range(GRID_SIZE)] for _ in range(GRID_SIZE)]
@@ -516,31 +597,112 @@ class GameGUI:
         
         print("✅ Puzzle restarted!")
 
+    # Network event handlers - called by NetworkManager
+    def on_player_joined(self, player_info, current_players):
+        """Handle when another player joins the game"""
+        print(f"🎮 Player joined: {player_info}")
+        print(f"Players in room: {current_players}")
+        # Store current player count for UI display
+        self.current_players = current_players
+
+    def on_player_left(self, player_info, current_players):
+        """Handle when another player leaves the game"""
+        print(f"👋 Player left: {player_info}")
+        print(f"Players in room: {current_players}")
+        # Update current player count for UI display
+        self.current_players = current_players
+
+    def on_object_locked(self, object_id, player):
+        """Handle when another player locks an object"""
+        print(f" Player {player} locked piece {object_id}")
+        # Could add visual indication that piece is locked by another player
+
+    def on_object_released(self, object_id, position, player):
+        """Handle when another player releases an object"""
+        print(f" Player {player} released piece {object_id} at {position}")
+        # Update piece position based on other player's action
+        self.update_piece_position_from_network(object_id, position)
+
+    def on_object_moved(self, object_id, position, player):
+        """Handle when another player moves a locked object"""
+        print(f" Player {player} moved piece {object_id} to {position}")
+        # Update piece position in real-time
+        self.update_piece_position_from_network(object_id, position)
+
+    def on_puzzle_solved(self, player, completion_time=None, total_pieces=None):
+        """Handle when another player solves the puzzle"""
+        print(f"🎉 Player {player} solved the puzzle!")
+        
+        # Trigger completion screen for all players
+        if not self.puzzle_completed:
+            self.puzzle_completed = True
+            self.win_time = pygame.time.get_ticks()
+            self.completion_by_other_player = True
+            self.other_player_name = player
+            self.other_player_completion_time = completion_time if completion_time else 0
+            self.other_player_total_pieces = total_pieces if total_pieces else len(self.pieces)
+            print(f"🎊 Showing completion screen for {player}'s victory!")
+
+    def update_piece_position_from_network(self, object_id, position):
+        """Update a piece's position based on network data from other players"""
+        # Find the piece by ID
+        for i, piece_data in enumerate(self.pieces):
+            if piece_data['id'] == object_id:
+                # Only update if we're not currently dragging this piece
+                if not (self.is_dragging and self.selected_piece_index == i):
+                    self.piece_rects[i].x = position['x']
+                    self.piece_rects[i].y = position['y']
+                    print(f"Updated piece {object_id} position to {position}")
+                break
+
+    def setup_multiplayer_game(self):
+        """Setup multiplayer game - try to join existing game first, then host if none available"""
+        if self.network_client:
+            # For now, let's add a simple prompt to choose host or join
+            print("\n🎮 Multiplayer Setup:")
+            print("1. Host a new game")
+            print("2. Join existing game")
+            
+            try:
+                choice = input("Enter choice (1 or 2, or press Enter to auto-host): ").strip()
+                
+                if choice == "2":
+                    game_id = input("Enter game ID to join: ").strip()
+                    if game_id:
+                        print(f"Attempting to join game: {game_id}")
+                        success = self.network_client.join_game(game_id)
+                        print(f"Join game result: {success}")
+                        return
+                
+                # Default behavior: host a new game
+                game_name = f"Puzzle Game {pygame.time.get_ticks()}"
+                success = self.network_client.host_game(game_name, max_players=4)
+                print(f"Hosting game '{game_name}': {success}")
+                
+            except (EOFError, KeyboardInterrupt):
+                # If running in an environment without input, just auto-host
+                game_name = f"Puzzle Game {pygame.time.get_ticks()}"
+                success = self.network_client.host_game(game_name, max_players=4)
+                print(f"Auto-hosting game '{game_name}': {success}")
+
     def send_completion_notification(self):
         """Send puzzle completion notification to server"""
         if self.network_client and self.puzzle_completed:
             completion_time = (self.win_time - self.start_time) / 1000
-            grid_state = self.get_grid_state_for_server()
             
-            payload = {
-                'action': 'PUZZLE_COMPLETED',
-                'completion_time': completion_time,
-                'total_pieces': len(self.pieces),
-                'grid_state': grid_state
-            }
-            try:
-                success = self.network_client.send_message('MSG_GAME_EVENT', payload)
-                print(f"Server notified of completion: {success}")
-            except:
-                print("Could not notify server of completion")
-        return False
+            success = self.network_client.puzzle_solved(
+                completion_time=completion_time,
+                total_pieces=len(self.pieces)
+            )
+            print(f"Server notified of completion: {success}")
+        return True
 
     def draw_grid_lines(self):
         if not self.pieces:
             return
         
         #how big each piece is
-        piece_width, piece_height = self.puzzle.piece_size
+        piece_width, piece_height = self.get_piece_size()
         
         # draw vertical + horizontal lines 
         for i in range(GRID_SIZE + 1):

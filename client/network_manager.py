@@ -17,6 +17,11 @@ class NetworkManager:
         self.connected = False
         self.listening = False
         self.listen_thread = None
+        self.game_gui = None  # Reference to the game GUI for callbacks
+    
+    def set_game_gui(self, game_gui):
+        """Set the game GUI reference for network event callbacks"""
+        self.game_gui = game_gui
 
     def connect(self, ip, port):
         """
@@ -180,25 +185,63 @@ class NetworkManager:
 
     def _handle_player_joined_brod(self, payload):
         player_info = payload.get('player')
+        current_players = payload.get('current_players')
         print(f"[BROD] Player joined: {player_info.get('ip')}:{player_info.get('port')}")
-        print(f"[BROD] Room now has {payload.get('current_players')} players")
+        print(f"[BROD] Room now has {current_players} players")
+        
+        # Notify game GUI if available
+        if self.game_gui and hasattr(self.game_gui, 'on_player_joined'):
+            self.game_gui.on_player_joined(player_info, current_players)
 
     def _handle_player_left_brod(self, payload):
         player_info = payload.get('player')
+        current_players = payload.get('current_players')
         print(f"[BROD] Player left: {player_info.get('ip')}:{player_info.get('port')}")
-        print(f"[BROD] Room now has {payload.get('current_players')} players")
+        print(f"[BROD] Room now has {current_players} players")
+        
+        # Notify game GUI if available
+        if self.game_gui and hasattr(self.game_gui, 'on_player_left'):
+            self.game_gui.on_player_left(player_info, current_players)
 
     def _handle_lock_object_brod(self, payload):
-        print(f"[BROD] Object locked: {payload.get('object_id')} by {payload.get('player')}")
+        object_id = payload.get('object_id')
+        player = payload.get('player')
+        print(f"[BROD] Object locked: {object_id} by {player}")
+        
+        # Notify game GUI if available
+        if self.game_gui and hasattr(self.game_gui, 'on_object_locked'):
+            self.game_gui.on_object_locked(object_id, player)
 
     def _handle_release_object_brod(self, payload):
-        print(f"[BROD] Object released: {payload.get('object_id')} at {payload.get('position')} by {payload.get('player')}")
+        object_id = payload.get('object_id')
+        position = payload.get('position')
+        player = payload.get('player')
+        print(f"[BROD] Object released: {object_id} at {position} by {player}")
+        
+        # Notify game GUI if available
+        if self.game_gui and hasattr(self.game_gui, 'on_object_released'):
+            self.game_gui.on_object_released(object_id, position, player)
 
     def _handle_move_locked_object_brod(self, payload):
-        print(f"[BROD] Object moved: {payload.get('object_id')} to {payload.get('position')} by {payload.get('player')}")
+        object_id = payload.get('object_id')
+        position = payload.get('position')
+        player = payload.get('player')
+        print(f"[BROD] Object moved: {object_id} to {position} by {player}")
+        
+        # Notify game GUI if available
+        if self.game_gui and hasattr(self.game_gui, 'on_object_moved'):
+            self.game_gui.on_object_moved(object_id, position, player)
 
     def _handle_puzzle_solved_brod(self, payload):
-        print(f"[BROD] Puzzle solved by {payload.get('player')}")
+        player = payload.get('player')
+        completion_time = payload.get('completion_time')
+        total_pieces = payload.get('total_pieces')
+        print(f"[BROD] Puzzle solved by {player}")
+        print(f"[BROD] Completion time: {completion_time:.1f}s, Pieces: {total_pieces}")
+        
+        # Notify game GUI if available
+        if self.game_gui and hasattr(self.game_gui, 'on_puzzle_solved'):
+            self.game_gui.on_puzzle_solved(player, completion_time, total_pieces)
 
     # Error
 
@@ -208,6 +251,27 @@ class NetworkManager:
 
     # -------------------------------------------------------------------------
     # Client to Server Helpers
+
+    def host_game(self, game_name, max_players=4):
+        """
+        Request to host a new game.
+        """
+        payload = self._make_payload(game_name=game_name, max_players=max_players)
+        return self.send_message(MSG_HOST_GAME, payload)
+
+    def join_game(self, game_id):
+        """
+        Request to join an existing game.
+        """
+        payload = self._make_payload(game_id=game_id)
+        return self.send_message(MSG_JOIN_GAME, payload)
+
+    def leave_game(self):
+        """
+        Request to leave the current game.
+        """
+        payload = {}
+        return self.send_message(MSG_LEAVE_GAME, payload)
 
     def lock_object(self, object_id):
         """

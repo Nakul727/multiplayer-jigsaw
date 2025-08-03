@@ -127,7 +127,7 @@ class GameRoom:
     # -------------------------------------------------------------------------
     # Puzzle State
 
-    def puzzle_solved(self, client_address):
+    def puzzle_solved(self, client_address, completion_time=None, total_pieces=None):
         """
         Mark the puzzle as solved.
         Returns (success: bool, info: dict).
@@ -136,7 +136,16 @@ class GameRoom:
             return False, {'error': 'Puzzle already solved'}
         
         self.puzzle_solved_flag = True
-        return True, {'message': 'Puzzle solved!'}
+        
+        # Include completion details in the info
+        info = {
+            'message': 'Puzzle solved!',
+            'completion_time': completion_time,
+            'total_pieces': total_pieces,
+            'solver': client_address
+        }
+        
+        return True, info
 
     # -------------------------------------------------------------------------
     # Room Info
