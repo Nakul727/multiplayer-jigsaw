@@ -144,7 +144,6 @@ class Server:
         broadcast = None
 
         if msg_type == MSG_HOST_GAME:
-            # Only ACK
             response, broadcast = self.handle_host_game(payload, client_address)
         elif msg_type == MSG_JOIN_GAME:
             response, broadcast = self.handle_join_game(payload, client_address)
@@ -155,7 +154,6 @@ class Server:
         elif msg_type == MSG_RELEASE_OBJECT:
             response, broadcast = self.handle_release_object(payload, client_address)
         elif msg_type == MSG_MOVE_LOCKED_OBJECT:
-            # Only broadcast
             response, broadcast = self.handle_move_locked_object(payload, client_address)
         elif msg_type == MSG_PUZZLE_SOLVED:
             response, broadcast = self.handle_puzzle_solved(payload, client_address)
@@ -164,24 +162,6 @@ class Server:
 
         return response, broadcast
 
-    def broadcast_to_room(self, message_bytes, game_id, exclude=None):
-        """
-        Broadcast message to all clients in a specific game room 
-        except the excluded client.
-        """
-        if game_id not in self.game_rooms:
-            return
-        
-        room = self.game_rooms[game_id]
-        
-        # Find client sockets for players in this room
-        for sock, addr in self.clients:
-            if addr in room.players and sock != exclude:
-                try:
-                    sock.send(message_bytes)
-                except Exception as e:
-                    print(f"Failed to send to {addr}: {e}")
-    
     def broadcast_to_clients(self, message_bytes, client_address, exclude=None):
         """
         Broadcast message to all clients in the same room as the client_address.
@@ -196,7 +176,8 @@ class Server:
 
     def broadcast_to_room(self, message_bytes, game_id, exclude=None):
         """
-        Broadcast message to all clients in a specific game room except the excluded client.
+        Broadcast message to all clients in a specific game room 
+        except the excluded client.
         """
         if game_id not in self.game_rooms:
             return
@@ -224,203 +205,177 @@ class Server:
 
     def handle_host_game(self, payload, client_address):
         """
-        Payload must contain the game_name and max_players
-        Creates a new game room and returns MSG_HOST_GAME_ACK with game room data
+        Handle client request to host a new game room
+        Note: No broadcast
         """
+        # Validate client is not already in a room
+        if client_address in self.client_rooms:
+            return serialize(MSG_ERROR, {'message': 'Already in a game room'}), None
+
+        # Extract and validate payload
         game_name = payload.get('game_name', 'Unnamed Room')
         max_players = payload.get('max_players', 4)
-        
-        # Client must not be in any existing game rooms
-        if client_address in self.client_rooms:
-            response = serialize(MSG_ERROR, {'message': 'Already in a game room'})
-            return response, None
-        
-        # Generate a random 6-character alphanumeric game ID
-        import random
-        import string
-        def generate_game_id():
-            chars = string.ascii_uppercase + string.digits
-            return ''.join(random.choice(chars) for _ in range(6))
-        
-        game_id = generate_game_id()
-        while game_id in self.game_rooms:
-            game_id = generate_game_id()
+        image_url = payload.get('image_url', '')
 
-        # Create a new GameRoom
-        room = GameRoom(game_id, game_name, max_players, client_address)
-        self.game_rooms[game_id] = room
-        self.client_rooms[client_address] = game_id
-        print(f"Client {client_address} hosted game: '{game_name}' (ID: {game_id})")
+        # Create GameRoom
+        room = GameRoom(game_name, max_players, client_address, image_url)
+        while room.game_id in self.game_rooms:
+            room = GameRoom(game_name, max_players, client_address, image_url)
+        
+        # Register room and client
+        self.game_rooms[room.game_id] = room
+        self.client_rooms[client_address] = room.game_id
+        
+        print(f"Client {client_address} hosted game: '{game_name}' (ID: {room.game_id})") 
 
-        # Return GameRoom info to client 
+        # Get the updated room state
+        room_state = room.get_game_room_state()
+    
+        # Return response with complete room state
         response_payload = {
             'success': True,
-            'game_id': game_id,
-            'game_name': game_name,
-            'max_players': max_players,
-            'current_players': room.get_player_count(),
-            'players': room.get_players_info(),
-            'host': room.get_host_info(),
+            **room_state,
             'message': f'Successfully hosted game: {game_name}'
         }
-        
-        response = serialize(MSG_HOST_GAME_ACK, response_payload)
-        return response, None
 
+        response = serialize(MSG_HOST_GAME_ACK, response_payload) 
+        broadcast = None
+        return (response, broadcast)
+    
     def handle_join_game(self, payload, client_address):
         """
         Handle client request to join an existing game room.
-        Payload should contain game_id to join.
         """
-        game_id = payload.get('game_id')
-        
         # Validate game_id is provided
+        game_id = payload.get('game_id')
         if not game_id:
-            response = serialize(MSG_ERROR, {'message': 'Game ID is required'})
-            broadcast = None
-            return response, broadcast
-        
-        # Check if client is already in a game room
+            return serialize(MSG_ERROR, {'message': 'Game ID is required'}), None
+
+        # Validate client is not already in a room
         if client_address in self.client_rooms:
-            response = serialize(MSG_ERROR, {'message': 'Already in a game room'})
-            broadcast = None
-            return response, broadcast
-        
-        # Check if game room exists
+            return serialize(MSG_ERROR, {'message': 'Already in a game room'}), None
+
+        # Validate game room exists
         if game_id not in self.game_rooms:
-            response = serialize(MSG_ERROR, {'message': 'Game room not found'})
-            broadcast = None
-            return response, broadcast
-        
+            return serialize(MSG_ERROR, {'message': 'Game room not found'}), None
+
         room = self.game_rooms[game_id]
-        
+
         # Check if room is full
         if room.is_full():
-            response = serialize(MSG_ERROR, {'message': 'Game room is full'})
-            broadcast = None
-            return response, broadcast
+            return serialize(MSG_ERROR, {'message': 'Game room is full'}), None
+
+        # Add player to room
+        if not room.add_player(client_address):
+            return serialize(MSG_ERROR, {'message': 'Failed to join game room'}), None
+
+        # Register client
+        self.client_rooms[client_address] = game_id
+
+        print(f"Client {client_address} joined game: '{room.game_name}' (ID: {game_id})")
         
-        # Add player to the room
-        if room.add_player(client_address):
-            self.client_rooms[client_address] = game_id
-            print(f"Client {client_address} joined game: '{room.game_name}' (ID: {game_id})")
-            
-            # Prepare response for the joining client
-            response_payload = {
-                'success': True,
-                'game_id': game_id,
-                'game_name': room.game_name,
-                'max_players': room.max_players,
-                'current_players': room.get_player_count(),
-                'players': room.get_players_info(),
-                'host': room.get_host_info(),
-                'message': f'Successfully joined game: {room.game_name}'
-            }
-            
-            # Prepare broadcast for other players in the room
-            broadcast_payload = {
-                'game_id': game_id,
-                'player': {"ip": client_address[0], "port": client_address[1]},
-                'current_players': room.get_player_count(),
-                'players': room.get_players_info()
-            }
-            
-            response = serialize(MSG_JOIN_GAME_ACK, response_payload)
-            broadcast = serialize(MSG_PLAYER_JOINED_BROD, broadcast_payload)
-            return response, broadcast
-        else:
-            response = serialize(MSG_ERROR, {'message': 'Failed to join game room'})
-            broadcast = None
-            return response, broadcast
+        # Get the updated room state
+        room_state = room.get_game_room_state()
+
+        # Return response with complete room state
+        response_payload = {
+            'success': True,
+            **room_state,
+            'message': f'Successfully joined game: {room.game_name}'
+        }
+
+        # Broadcast join to other clients in room
+        broadcast_payload = {
+            'game_id': game_id,
+            'player': {"ip": client_address[0], "port": client_address[1]},
+            'current_players': room_state['current_players'],
+            'players': room_state['players']
+        }
+
+        response = serialize(MSG_JOIN_GAME_ACK, response_payload)
+        broadcast = serialize(MSG_HOST_GAME_ACK, broadcast_payload)
+        return (response, broadcast)
 
     def handle_leave_game(self, client_address):
         """
         Handle client request to leave their current game room.
-        Remove client from room and notify other players.
         """
-        # Check if client is in any game room
+        # Validate client is in a room
         if client_address not in self.client_rooms:
-            response = serialize(MSG_ERROR, {'message': 'Not in any game room'})
-            broadcast = None
-            return response, broadcast
+            return serialize(MSG_ERROR, {'message': 'Not in any game room'}), None
         
         game_id = self.client_rooms[client_address]
-        room = self.game_rooms[game_id]
-        
-        # Store original host info before removal
-        was_host = (client_address == room.host_address)
-        old_host = room.get_host_info()
-        
-        # Remove player from the room
+        room = self.game_rooms.get(game_id)
+        if not room:
+            return serialize(MSG_ERROR, {'message': 'Not in any game room'}), None
+
+        # Remove player and check for host change
         host_changed = room.remove_player(client_address)
         del self.client_rooms[client_address]
-        
-        print(f"Client {client_address} left game: '{room.game_name}' (ID: {game_id})")
-        
-        # Check if room is now empty and should be deleted
+       
+        print(f"Client {client_address} left game: '{room.game_name}' (ID: {game_id})") 
+
+        # Handle empty room
         if room.is_empty():
             del self.game_rooms[game_id]
             print(f"Game room '{room.game_name}' (ID: {game_id}) deleted - no players remaining")
             
-            response_payload = {
-                'success': True,
-                'message': 'Successfully left game room'
-            }
-            response = serialize(MSG_LEAVE_GAME_ACK, response_payload)
-            broadcast = None
-            return response, broadcast
-        
-        # Prepare response for the leaving client
+            response_payload = {'success': True, 'message': 'Successfully left game room'}
+            return serialize(MSG_LEAVE_GAME_ACK, response_payload), None
+
+        # Get the updated room state
+        room_state = room.get_game_room_state()
+
+        # Return response of left game
         response_payload = {
-            'success': True,
+            'success': True, 
             'message': 'Successfully left game room'
         }
 
-        # Prepare broadcast for remaining players in the room
+        # Broadcast leave to other clients in room
         broadcast_payload = {
             'game_id': game_id,
             'player': {"ip": client_address[0], "port": client_address[1]},
-            'current_players': room.get_player_count(),
-            'players': room.get_players_info()
+            'current_players': room_state['current_players'],
+            'players': room_state['players'],
+            'host_changed': host_changed,
+            'host': room_state['host']
         }
         
-        # If host changed, include new host info in broadcast
-        if host_changed:
-            broadcast_payload['new_host'] = room.get_host_info()
-            broadcast_payload['host_changed'] = True
-            print(f"Host changed from {old_host} to {room.get_host_info()}")
-        else:
-            broadcast_payload['host_changed'] = False
-
         response = serialize(MSG_LEAVE_GAME_ACK, response_payload)
         broadcast = serialize(MSG_PLAYER_LEFT_BROD, broadcast_payload)
-        return response, broadcast
+        return (response, broadcast)
 
     # -------------------------------------------------------------------------
-    
+
     def handle_lock_object(self, payload, client_address):
         """
         Handle a request to lock an object.
-        Returns (ACK, BROD)
         """
+        # Validate client is in a room
         if client_address not in self.client_rooms:
-            response = serialize(MSG_ERROR, {'message': 'Not in any game room'})
-            return response, None
-    
+            return serialize(MSG_ERROR, {'message': 'Not in any game room'}), None
+        
         game_id = self.client_rooms[client_address]
-        room = self.game_rooms[game_id]
+        room = self.game_rooms.get(game_id)
+        if not room:
+            return serialize(MSG_ERROR, {'message': 'Not in any game room'}), None
+
+        # Lock object
         object_id = payload.get('object_id')
-    
         success, info = room.lock_object(object_id, client_address)
+        
+        # Respond with all locked objects
         response_payload = {
             'success': success,
             'info': info,
             'object_id': object_id,
             'locked_objects': room.get_locked_objects()
         }
+
         response = serialize(MSG_LOCK_OBJECT_ACK, response_payload)
-    
-        # Only broadcast if successful
+
+        # Prepare broadcast only if successful
         broadcast = None
         if success:
             broadcast_payload = {
@@ -429,33 +384,38 @@ class Server:
                 'info': info
             }
             broadcast = serialize(MSG_LOCK_OBJECT_BROD, broadcast_payload)
-    
-        return response, broadcast
-    
+
+        return (response, broadcast)
+
     def handle_release_object(self, payload, client_address):
         """
         Handle a request to release an object.
-        Returns (ACK, BROD)
         """
+        # Validate client is in a room
         if client_address not in self.client_rooms:
-            response = serialize(MSG_ERROR, {'message': 'Not in any game room'})
-            return response, None
-    
+            return serialize(MSG_ERROR, {'message': 'Not in any game room'}), None
+        
         game_id = self.client_rooms[client_address]
-        room = self.game_rooms[game_id]
+        room = self.game_rooms.get(game_id)
+        if not room:
+            return serialize(MSG_ERROR, {'message': 'Not in any game room'}), None
+
+        # Release object
         object_id = payload.get('object_id')
         position = payload.get('position')
-    
         success, info = room.release_object(object_id, client_address, position)
+        
+        # Respond with all locked objects
         response_payload = {
             'success': success,
             'info': info,
             'object_id': object_id,
             'locked_objects': room.get_locked_objects()
         }
+
         response = serialize(MSG_RELEASE_OBJECT_ACK, response_payload)
-    
-        # Only broadcast if successful
+
+        # Prepare broadcast only if successful
         broadcast = None
         if success:
             broadcast_payload = {
@@ -465,25 +425,30 @@ class Server:
                 'info': info
             }
             broadcast = serialize(MSG_RELEASE_OBJECT_BROD, broadcast_payload)
-    
-        return response, broadcast
+
+        return (response, broadcast)
     
     def handle_move_locked_object(self, payload, client_address):
         """
         Handle a request to move a locked object.
-        Returns (None, BROD) -- no ACK, only broadcast
+        Note: No acknowledgement
         """
+        # Validate client is in a room
         if client_address not in self.client_rooms:
-            response = serialize(MSG_ERROR, {'message': 'Not in any game room'})
-            return response, None
-    
+            return serialize(MSG_ERROR, {'message': 'Not in any game room'}), None
+        
         game_id = self.client_rooms[client_address]
-        room = self.game_rooms[game_id]
+        room = self.game_rooms.get(game_id)
+        if not room:
+            return serialize(MSG_ERROR, {'message': 'Not in any game room'}), None
+
         object_id = payload.get('object_id')
         position = payload.get('position')
-    
         success, info = room.move_locked_object(object_id, client_address, position)
-        # No ACK for move, only broadcast if successful
+
+        response = None
+
+        # Prepare broadcast only if successful
         broadcast = None
         if success:
             broadcast_payload = {
@@ -493,29 +458,34 @@ class Server:
                 'info': info
             }
             broadcast = serialize(MSG_MOVE_LOCKED_OBJECT_BROD, broadcast_payload)
-    
-        return None, broadcast
-    
+
+        return (response, broadcast)
+
     def handle_puzzle_solved(self, payload, client_address):
         """
         Handle a request to mark the puzzle as solved.
-        Returns (ACK, BROD)
         """
+        # Validate client is in a room
         if client_address not in self.client_rooms:
-            response = serialize(MSG_ERROR, {'message': 'Not in any game room'})
-            return response, None
-    
+            return serialize(MSG_ERROR, {'message': 'Not in any game room'}), None
+        
         game_id = self.client_rooms[client_address]
-        room = self.game_rooms[game_id]
-    
+        room = self.game_rooms.get(game_id)
+        if not room:
+            return serialize(MSG_ERROR, {'message': 'Not in any game room'}), None
+
+        # Set the puzzle solved to true
         success, info = room.puzzle_solved(client_address)
+        
+        # Respond with success
         response_payload = {
-            'success': success,
+            'success': success, 
             'info': info
         }
+
         response = serialize(MSG_PUZZLE_SOLVED_ACK, response_payload)
-    
-        # Only broadcast if successful
+
+        # Prepare broadcast only if successful
         broadcast = None
         if success:
             broadcast_payload = {
@@ -523,5 +493,5 @@ class Server:
                 'info': info
             }
             broadcast = serialize(MSG_PUZZLE_SOLVED_BROD, broadcast_payload)
-    
-        return response, broadcast
+
+        return (response, broadcast)
