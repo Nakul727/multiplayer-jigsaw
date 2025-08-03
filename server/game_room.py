@@ -1,18 +1,64 @@
+import random
+import string
+
 class GameRoom:
-    def __init__(self, game_id, game_name, max_players, host_address):
+    def __init__(self, game_name, max_players, host_address, image_url):
         """
         Initialize a new game room with the specified parameters.
         The host is automatically added as the first player.
         """
-        self.game_id = game_id
+        # Game config
+        self.game_id = self._generate_game_id()
         self.game_name = game_name
         self.max_players = max_players
         self.host_address = host_address
         self.players = [host_address]
+
+        # Puzzle config
+        self.image_url = image_url
+        self.piece_positions = self._generate_initial_piece_positions()
+
+        # Game state
         self.locked_objects = {}
-        self.released_objects = {}
         self.puzzle_solved_flag = False
 
+    def _generate_game_id(self):
+        """
+        Generate a random 6-character alphanumeric game ID
+        """
+        chars = string.ascii_uppercase + string.digits
+        return ''.join(random.choice(chars) for _ in range(6))
+
+    def _generate_initial_piece_positions(self):
+        """
+        Generate a dictonary mapping piece_id to random x,y cordinates, 
+        given the dimensions of the screen and total piece count of the puzzle
+        """
+        # Grid = (3 x 3)
+        total_pieces = 9 
+        
+        # Screen dimensions
+        screen_width = 800
+        screen_height = 800
+        avg_piece_size = 100
+        margin = 80 
+        
+        piece_positions = {}
+        
+        for i in range(total_pieces):
+            piece_id = f'piece_{i}'
+            
+            # x,y boundaries (with small margin)
+            max_x = max(margin, screen_width - avg_piece_size - margin)
+            max_y = max(margin, screen_height - avg_piece_size - margin)
+            
+            # generate x,y cordinates
+            x = random.randint(margin, max_x)
+            y = random.randint(margin, max_y)
+            piece_positions[piece_id] = {'x': x, 'y': y}
+        
+        return piece_positions
+    
     # -------------------------------------------------------------------------
     # Player Management
 
@@ -35,6 +81,7 @@ class GameRoom:
         Returns True if host changed, otherwise False.
         """
         if client_address in self.players:
+            # Remove from players array
             self.players.remove(client_address)
 
             # Remove any locks held by this player
@@ -72,6 +119,30 @@ class GameRoom:
         return None
 
     # -------------------------------------------------------------------------
+    # Piece Position
+
+    def update_piece_position(self, piece_id, position):
+        """
+        Update the position of a piece in the server's game state.
+        """
+        if piece_id in self.piece_positions:
+            self.piece_positions[piece_id] = position
+            return True
+        return False
+
+    def get_piece_positions(self):
+        """
+        Get all current piece positions.
+        """
+        return self.piece_positions.copy()
+
+    def get_piece_position(self, piece_id):
+        """
+        Get the current position of a specific piece.
+        """
+        return self.piece_positions.get(piece_id)
+    
+    # -------------------------------------------------------------------------
     # Object Locking
 
     def lock_object(self, object_id, client_address):
@@ -83,12 +154,13 @@ class GameRoom:
             return False, {'error': 'Missing object_id'}
         if object_id in self.locked_objects:
             return False, {'error': f'Object {object_id} is already locked'}
+        
         self.locked_objects[object_id] = client_address
         return True, {'message': f'Object {object_id} locked'}
 
     def release_object(self, object_id, client_address, position):
         """
-        Release a locked object and record its coordinates.
+        Release a locked object and update its position in the server
         Returns (success: bool, info: dict).
         """
         if not object_id or position is None:
@@ -96,9 +168,13 @@ class GameRoom:
         if self.locked_objects.get(object_id) != client_address:
             return False, {'error': f'Object {object_id} not locked by you'}
     
+        # Remove from locked objects
         del self.locked_objects[object_id]
-        self.released_objects[object_id] = position
+        
+        # Update piece position in server state
+        self.update_piece_position(object_id, position)
         return True, {'message': f'Object {object_id} released'}
+
 
     def move_locked_object(self, object_id, client_address, position):
         """
@@ -110,8 +186,8 @@ class GameRoom:
         if self.locked_objects.get(object_id) != client_address:
             return False, {'error': f'Object {object_id} not locked by you'}
         
-        # Add game logic here like (objectid, x, y) etc.
-        # Update the local server game room instance with that as well
+        # Update piece position in server state
+        self.update_piece_position(object_id, position)
 
         return True, {'message': f'Object {object_id} moved', 'position': position}
 
@@ -121,11 +197,22 @@ class GameRoom:
             for obj, addr in self.locked_objects.items()
         }
 
-    def get_released_objects(self):
-        return self.released_objects.copy()
-
     # -------------------------------------------------------------------------
-    # Puzzle State
+    # Puzzle Config
+
+    def get_puzzle_info(self):
+        """
+        Get puzzle configuration for sharing with joining clients.
+        """
+        return {
+            'image_url': self.image_url,
+        }
+    
+    def set_puzzle_info(self, image_url):
+        """
+        Update puzzle configuration.
+        """
+        self.image_url = image_url
 
     def puzzle_solved(self, client_address):
         """
@@ -139,11 +226,12 @@ class GameRoom:
         return True, {'message': 'Puzzle solved!'}
 
     # -------------------------------------------------------------------------
-    # Room Info
+    # Game Room State
 
-    def get_room_info(self):
+    def get_game_room_state(self):
         """
-        Return complete room information as a dictionary.
+        Get complete game room state for client communication.
+        This is the primary method for retrieving room information.
         """
         return {
             'game_id': self.game_id,
@@ -154,6 +242,8 @@ class GameRoom:
             'players': self.get_players_info(),
             'is_full': self.is_full(),
             'is_empty': self.is_empty(),
+            'image_url': self.image_url,
+            'piece_positions': self.get_piece_positions(),
             'locked_objects': self.get_locked_objects(),
-            'released_objects': self.get_released_objects()
+            'puzzle_solved': self.puzzle_solved_flag
         }
