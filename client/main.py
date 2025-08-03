@@ -31,7 +31,7 @@ def main():
     image_url = ""
 
     # Handle hosting
-    if command.lower() == 'host' and len(sys.argv) == 7:
+    if command.lower() == 'host' and len(sys.argv) >= 7:
         game_name = sys.argv[4]
         try:
             max_players = int(sys.argv[5])
@@ -69,21 +69,17 @@ def main():
 
     print(f"Successfully joined game!!! Game ID: {network.game_id}")
     
-
-    # if we are joining, we need to get the image_url from the host or SERVER (idk how)
-    # TRYING THIS: i think the ACK message for joining will contain it
-    if command.lower() == 'join':
-        # cuz the image_url should have been set in the network_manager by the join_game_ack handler
-        image_url = network.image_url
-        if not image_url:
-             print("Error: Could not retrieve image_url from the s")
-             network.disconnect()
-             sys.exit(1)
-
+    # Get game data from network manager
+    image_url = network.image_url
+    piece_positions = network.piece_positions
+    if not image_url or not piece_positions:
+        print("Error: Could not retrieve image_url or piece positions from server")
+        network.disconnect()
+        sys.exit(1)
 
     # launch game GUI (working dont touch)
     try:
-        gui = GameGUI(network, image_url)
+        gui = GameGUI(network, image_url, piece_positions)
         gui.run()
     except Exception as e:
         print(f"An error occurred during the game: {e}")

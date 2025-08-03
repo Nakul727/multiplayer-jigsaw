@@ -17,14 +17,19 @@ class NetworkManager:
         self.connected = False
         self.listening = False
         self.listen_thread = None
-        # Game state management
+        
+        # Game state
         self.game_id = None
         self.game_name = None
         self.current_players = 0
         self.max_players = 0
         self.image_url = None
+        self.host_info = None 
         self.is_host = False
 
+        # Piece state
+        self.piece_positions = {}
+        self.locked_by_others = {} 
 
     def connect(self, ip, port):
         """
@@ -141,19 +146,25 @@ class NetworkManager:
             print(f"Unknown message type received: {msg_type}")
     
     # Ack Handlers
-
+    
     def _handle_host_game_ack(self, payload):
         if payload.get('success'):
             self.game_id = payload.get('game_id')
             self.game_name = payload.get('game_name')
             self.current_players = payload.get('current_players')
             self.max_players = payload.get('max_players')
+            self.image_url = payload.get('image_url')
+            self.host_info = payload.get('host')
             self.is_host = True
 
-            print(f"[ACK] Game hosted successfully: {payload.get('game_id')}")
-            print(f"[ACK] Room: {payload.get('game_name')} ({payload.get('current_players')}/{payload.get('max_players')})")
+            self.piece_positions = payload.get('piece_positions', {})
+
+            print(f"[ACK] Game hosted successfully: {self.game_id}")
+            print(f"[ACK] Room: {self.game_name} ({self.current_players}/{self.max_players})")
+            print(f"[ACK] Piece positions: {len(self.piece_positions)} pieces")
         else:
             print(f"[ACK] Failed to host game: {payload.get('message')}")
+
 
     def _handle_join_game_ack(self, payload):
         if payload.get('success'):
@@ -161,24 +172,37 @@ class NetworkManager:
             self.game_name = payload.get('game_name')
             self.current_players = payload.get('current_players')
             self.max_players = payload.get('max_players')
-            self.image_url = payload.get('image_url') # <- HERE Storeing the image URL for joining clients????
+            self.image_url = payload.get('image_url')
+            self.host_info = payload.get('host')
+            self.is_host = False
+            
+            self.piece_positions = payload.get('piece_positions', {})
 
-            print(f"[ACK] Joined game: {payload.get('game_name')}")
-            print(f"[ACK] Players: {payload.get('current_players')}/{payload.get('max_players')}")
+            print(f"[ACK] Joined game: {self.game_name}")
+            print(f"[ACK] Players: {self.current_players}/{self.max_players}")
+            print(f"[ACK] Image URL: {self.image_url}")
+            print(f"[ACK] Piece positions: {len(self.piece_positions)} pieces")
         else:
             print(f"[ACK] Failed to join game: {payload.get('message')}")
 
+
     def _handle_leave_game_ack(self, payload):
         if payload.get('success'):
-            print("[ACK] Left game successfully")
-            # reset game state 
             self.game_id = None
             self.game_name = None
             self.current_players = 0
             self.max_players = 0
+            self.image_url = None
+            self.host_info = None
             self.is_host = False
+
+            self.piece_positions = {}
+            self.locked_by_others = {}
+
+            print("[ACK] Left game successfully")
         else:
             print(f"[ACK] Failed to leave game: {payload.get('message')}")
+
 
     def _handle_lock_object_ack(self, payload):
         if payload.get('success'):
@@ -206,51 +230,121 @@ class NetworkManager:
 
     def _handle_player_joined_brod(self, payload):
         player_info = payload.get('player')
-        print(f"[BROD] Player joined: {player_info.get('ip')}:{player_info.get('port')}")
-        print(f"[BROD] Room now has {payload.get('current_players')} players")
+        self.current_players = payload.get('current_players', self.current_players)
 
+        print(f"[BROD] Player joined: {player_info.get('ip')}:{player_info.get('port')}")
+        print(f"[BROD] Room now has {self.current_players} players")
+    
     def _handle_player_left_brod(self, payload):
         player_info = payload.get('player')
+        self.current_players = payload.get('current_players', self.current_players)
+        
+        # Handle host change if it occurred
+        if payload.get('host_changed', False):
+            new_host = payload.get('host')
+            if new_host:
+                self.host_info = new_host
+                print(f"[BROD] Host changed to: {new_host.get('ip')}:{new_host.get('port')}")
+            
+            # Update players list
+            if 'players' in payload:
+                players_list = payload.get('players', [])
+                print(f"[BROD] Updated players list: {players_list}")
+        
         print(f"[BROD] Player left: {player_info.get('ip')}:{player_info.get('port')}")
-        print(f"[BROD] Room now has {payload.get('current_players')} players")
+        print(f"[BROD] Room now has {self.current_players} players")
+
 
     def _handle_lock_object_brod(self, payload):
-        print(f"[BROD] Object locked: {payload.get('object_id')} by {payload.get('player')}")
+        player_info = payload.get('player')
+        object_id = payload.get('object_id') 
+
+        # Add to locked list     
+        self.locked_by_others[object_id] = player_info
+
+        print(f"[BROD] Object locked: {object_id} by {player_info}")
+  
 
     def _handle_release_object_brod(self, payload):
-        print(f"[BROD] Object released: {payload.get('object_id')} at {payload.get('position')} by {payload.get('player')}")
+        object_id = payload.get('object_id')
+        position = payload.get('position')
+        player_info = payload.get('player')
 
+        # Remove from locked list and update position
+        if object_id in self.locked_by_others:
+            del self.locked_by_others[object_id]
+        
+        # Update piece position
+        if object_id in self.piece_positions:
+            self.piece_positions[object_id] = position
+
+        print(f"[BROD] Object released: {object_id} at {position} by {player_info}")
+        
     def _handle_move_locked_object_brod(self, payload):
-        print(f"[BROD] Object moved: {payload.get('object_id')} to {payload.get('position')} by {payload.get('player')}")
+        object_id = payload.get('object_id')
+        position = payload.get('position')
+        player_info = payload.get('player')
+  
+        # Update piece position
+        if object_id in self.piece_positions:
+            self.piece_positions[object_id] = position
 
+        print(f"[BROD] Object moved: {object_id} to {position} by {player_info}")
+      
     def _handle_puzzle_solved_brod(self, payload):
-        print(f"[BROD] Puzzle solved by {payload.get('player')}")
+        player_info = payload.get('player')
+        print(f"[BROD] Puzzle solved by {player_info}")
 
     # Error
 
     def _handle_error(self, payload):
         error_message = payload.get('message', 'Unknown error')
-        print(f"[ACK] Server error: {error_message}")
+        print(f"[ERROR] Server error: {error_message}")
+
+    # -------------------------------------------------------------------------
+    # State Query Methods for GUI
+
+    def is_piece_locked_by_others(self, piece_id):
+        """Check if a piece is locked by another player."""
+        return piece_id in self.locked_by_others
+
+    def get_piece_locker_info(self, piece_id):
+        """Get information about who locked a piece."""
+        return self.locked_by_others.get(piece_id)
+
+    def get_current_piece_positions(self):
+        """Get current piece positions from network manager."""
+        return self.piece_positions.copy()
+
+    def update_local_piece_position(self, piece_id, position):
+        """Update local piece position tracking."""
+        self.piece_positions[piece_id] = position
 
     # -------------------------------------------------------------------------
     # Client to Server Helpers
 
     def host_game(self, game_name, max_players, image_url):
-        """Send a request to host a new game."""
+        """
+        Send a request to host a new game
+        """
         payload = {
             'game_name': game_name,
             'max_players': max_players,
-            'image_url': image_url
+            'image_url': image_url,
         }
         return self.send_message(MSG_HOST_GAME, payload)
 
     def join_game(self, game_id):
-        """Send a request to join an existing game."""
+        """
+        Send a request to join an existing game
+        """
         payload = {'game_id': game_id}
         return self.send_message(MSG_JOIN_GAME, payload)
     
     def leave_game(self):
-        """Send a request to leave the current game."""
+        """
+        Send a request to leave the current game
+        """
         return self.send_message(MSG_LEAVE_GAME, {})
 
     def lock_object(self, object_id):
