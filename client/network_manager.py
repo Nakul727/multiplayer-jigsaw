@@ -32,6 +32,10 @@ class NetworkManager:
         # Piece state
         self.piece_positions = {}
         self.locked_by_others = {} 
+    
+        # Puzzle completion state
+        self.puzzle_completed = False
+        self.puzzle_solver = None
 
     def connect(self, ip, port):
         """
@@ -206,6 +210,10 @@ class NetworkManager:
 
             self.piece_positions = {}
             self.locked_by_others = {}
+            
+            # Reset puzzle completion state
+            self.puzzle_completed = False
+            self.puzzle_solver = None
 
             print("[ACK] Left game successfully")
         else:
@@ -300,6 +308,8 @@ class NetworkManager:
       
     def _handle_puzzle_solved_brod(self, payload):
         player_info = payload.get('player')
+        self.puzzle_completed = True
+        self.puzzle_solver = player_info
         print(f"[BROD] Puzzle solved by {player_info}")
 
     # Error
@@ -327,6 +337,14 @@ class NetworkManager:
         """Update local piece position tracking."""
         self.piece_positions[piece_id] = position
 
+    def is_puzzle_completed(self):
+        """Check if the puzzle has been completed by any player."""
+        return self.puzzle_completed
+
+    def get_puzzle_solver(self):
+        """Get information about who solved the puzzle."""
+        return self.puzzle_solver
+    
     # -------------------------------------------------------------------------
     # Client to Server Helpers
 

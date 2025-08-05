@@ -177,6 +177,15 @@ class GameGUI:
 
     def _sync_with_network_manager(self):
         """Sync piece positions and lock states with network manager."""
+        # Check if puzzle was completed by another player
+        if not self.game_won and self.network_manager.is_puzzle_completed():
+            self.game_won = True
+            solver_info = self.network_manager.get_puzzle_solver()
+            if solver_info:
+                print(f"PUZZLE SOLVED by {solver_info['ip']}:{solver_info['port']}!")
+            else:
+                print("PUZZLE SOLVED by another player!")
+        
         # Get current positions from network manager
         network_positions = self.network_manager.get_current_piece_positions()
         
@@ -443,7 +452,7 @@ class GameGUI:
                    (current_pos[1] - correct_pos[1]) ** 2) ** 0.5
         
         return distance <= self.snap_tolerance
-
+    
     def _draw_win_message(self):
         """Draw the win message overlay."""
         # Semi-transparent overlay
@@ -457,7 +466,13 @@ class GameGUI:
         text_rect = win_text.get_rect(center=(WINDOW_WIDTH // 2, WINDOW_HEIGHT // 2))
         self.screen.blit(win_text, text_rect)
         
-        # Additional message
-        sub_text = self.small_font.render("Congratulations! You solved the puzzle!", True, COLOR_WHITE)
+        # Show who solved it
+        solver_info = self.network_manager.get_puzzle_solver()
+        if solver_info:
+            solver_text = f"Solved by: {solver_info['ip']}:{solver_info['port']}"
+        else:
+            solver_text = "Congratulations! You solved the puzzle!"
+        
+        sub_text = self.small_font.render(solver_text, True, COLOR_WHITE)
         sub_rect = sub_text.get_rect(center=(WINDOW_WIDTH // 2, WINDOW_HEIGHT // 2 + 40))
         self.screen.blit(sub_text, sub_rect)
