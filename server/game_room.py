@@ -1,8 +1,13 @@
 import random
 import string
+import sys
+import os
+
+sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'shared'))
+from constants import * 
 
 class GameRoom:
-    def __init__(self, game_name, max_players, host_address, image_url):
+    def __init__(self, game_name, max_players, host_address, image_url, difficulty='easy'):
         """
         Initialize a new game room with the specified parameters.
         The host is automatically added as the first player.
@@ -16,6 +21,8 @@ class GameRoom:
 
         # Puzzle config
         self.image_url = image_url
+        self.difficulty = difficulty
+        self.difficulty_settings = DIFFICULTY_SETTINGS[difficulty]
         self.piece_positions = self._generate_initial_piece_positions()
 
         # Game state
@@ -31,16 +38,15 @@ class GameRoom:
 
     def _generate_initial_piece_positions(self):
         """
-        Generate a dictonary mapping piece_id to random x,y cordinates, 
-        given the dimensions of the screen and total piece count of the puzzle
+        Generate a dictionary mapping piece_id to random x,y coordinates, 
+        based on the difficulty settings
         """
-        # Grid = (3 x 3)
-        total_pieces = 9 
+        total_pieces = self.difficulty_settings['pieces']
         
         # Screen dimensions
-        screen_width = 800
-        screen_height = 800
-        avg_piece_size = 100
+        window_width = WINDOW_WIDTH
+        window_height = WINDOW_HEIGHT
+        avg_piece_size = self.difficulty_settings['target_piece_size']
         margin = 80 
         
         piece_positions = {}
@@ -49,10 +55,10 @@ class GameRoom:
             piece_id = f'piece_{i}'
             
             # x,y boundaries (with small margin)
-            max_x = max(margin, screen_width - avg_piece_size - margin)
-            max_y = max(margin, screen_height - avg_piece_size - margin)
+            max_x = max(margin, window_width - avg_piece_size - margin)
+            max_y = max(margin, window_height - avg_piece_size - margin)
             
-            # generate x,y cordinates
+            # generate x,y coordinates
             x = random.randint(margin, max_x)
             y = random.randint(margin, max_y)
             piece_positions[piece_id] = {'x': x, 'y': y}
@@ -206,13 +212,15 @@ class GameRoom:
         """
         return {
             'image_url': self.image_url,
+            'difficulty': self.difficulty,
         }
     
-    def set_puzzle_info(self, image_url):
+    def set_puzzle_info(self, image_url, difficulty='easy'):
         """
         Update puzzle configuration.
         """
         self.image_url = image_url
+        self.difficulty = difficulty
 
     def puzzle_solved(self, client_address):
         """
@@ -227,7 +235,7 @@ class GameRoom:
 
     # -------------------------------------------------------------------------
     # Game Room State
-
+    
     def get_game_room_state(self):
         """
         Get complete game room state for client communication.
@@ -243,6 +251,7 @@ class GameRoom:
             'is_full': self.is_full(),
             'is_empty': self.is_empty(),
             'image_url': self.image_url,
+            'difficulty': self.difficulty,
             'piece_positions': self.get_piece_positions(),
             'locked_objects': self.get_locked_objects(),
             'puzzle_solved': self.puzzle_solved_flag

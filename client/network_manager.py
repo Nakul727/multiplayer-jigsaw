@@ -26,6 +26,8 @@ class NetworkManager:
         self.image_url = None
         self.host_info = None 
         self.is_host = False
+        self.difficulty = 'easy'
+        self.difficulty_settings = None
 
         # Piece state
         self.piece_positions = {}
@@ -146,7 +148,7 @@ class NetworkManager:
             print(f"Unknown message type received: {msg_type}")
     
     # Ack Handlers
-    
+
     def _handle_host_game_ack(self, payload):
         if payload.get('success'):
             self.game_id = payload.get('game_id')
@@ -156,15 +158,17 @@ class NetworkManager:
             self.image_url = payload.get('image_url')
             self.host_info = payload.get('host')
             self.is_host = True
+            self.difficulty = payload.get('difficulty', 'easy')
+            self.difficulty_settings = payload.get('difficulty_settings')
 
             self.piece_positions = payload.get('piece_positions', {})
 
             print(f"[ACK] Game hosted successfully: {self.game_id}")
             print(f"[ACK] Room: {self.game_name} ({self.current_players}/{self.max_players})")
+            print(f"[ACK] Difficulty: {self.difficulty}")
             print(f"[ACK] Piece positions: {len(self.piece_positions)} pieces")
         else:
             print(f"[ACK] Failed to host game: {payload.get('message')}")
-
 
     def _handle_join_game_ack(self, payload):
         if payload.get('success'):
@@ -175,16 +179,18 @@ class NetworkManager:
             self.image_url = payload.get('image_url')
             self.host_info = payload.get('host')
             self.is_host = False
+            self.difficulty = payload.get('difficulty', 'easy')
+            self.difficulty_settings = payload.get('difficulty_settings')
             
             self.piece_positions = payload.get('piece_positions', {})
 
             print(f"[ACK] Joined game: {self.game_name}")
             print(f"[ACK] Players: {self.current_players}/{self.max_players}")
             print(f"[ACK] Image URL: {self.image_url}")
+            print(f"[ACK] Difficulty: {self.difficulty}")
             print(f"[ACK] Piece positions: {len(self.piece_positions)} pieces")
         else:
             print(f"[ACK] Failed to join game: {payload.get('message')}")
-
 
     def _handle_leave_game_ack(self, payload):
         if payload.get('success'):
@@ -195,6 +201,8 @@ class NetworkManager:
             self.image_url = None
             self.host_info = None
             self.is_host = False
+            self.difficulty = 'easy'
+            self.difficulty_settings = None
 
             self.piece_positions = {}
             self.locked_by_others = {}
@@ -202,7 +210,6 @@ class NetworkManager:
             print("[ACK] Left game successfully")
         else:
             print(f"[ACK] Failed to leave game: {payload.get('message')}")
-
 
     def _handle_lock_object_ack(self, payload):
         if payload.get('success'):
@@ -323,7 +330,7 @@ class NetworkManager:
     # -------------------------------------------------------------------------
     # Client to Server Helpers
 
-    def host_game(self, game_name, max_players, image_url):
+    def host_game(self, game_name, max_players, image_url, difficulty='easy'):
         """
         Send a request to host a new game
         """
@@ -331,6 +338,7 @@ class NetworkManager:
             'game_name': game_name,
             'max_players': max_players,
             'image_url': image_url,
+            'difficulty': difficulty,
         }
         return self.send_message(MSG_HOST_GAME, payload)
 
