@@ -8,8 +8,9 @@ def main():
 
     if len(sys.argv) < 5:
         print("not gonna work try these:")
-        print("  To host: python main.py <ip> <port> host <game_name> <max_players> <image_url>")
+        print("  To host: python main.py <ip> <port> host <game_name> <max_players> <image_url> [difficulty]")
         print("  To join: python main.py <ip> <port> join <game_id>")
+        print("  Available difficulties: easy, medium, hard")
         sys.exit(1)
 
     # 1. 127.0.0.1 
@@ -41,8 +42,17 @@ def main():
             sys.exit(1)
         image_url = sys.argv[6]
         
-        print(f"Attempting to host game '{game_name}'...")
-        network.host_game(game_name, max_players, image_url)
+        # Get difficulty (optional parameter, defaults to 'easy')
+        difficulty = 'easy'
+        if len(sys.argv) >= 8:
+            difficulty = sys.argv[7].lower()
+            if difficulty not in ['easy', 'medium', 'hard']:
+                print("Error: Invalid difficulty. Use 'easy', 'medium', or 'hard'.")
+                network.disconnect()
+                sys.exit(1)
+        
+        print(f"Attempting to host game '{game_name}' with difficulty '{difficulty}'...")
+        network.host_game(game_name, max_players, image_url, difficulty)
 
     # handle joining
     elif command.lower() == 'join' and len(sys.argv) == 5:
@@ -52,12 +62,13 @@ def main():
     else:
         print("Invalid arguments.")
         print("Usage:")
-        print("  To host: python main.py <ip> <port> host <game_name> <max_players> <image_url>")
+        print("  To host: python main.py <ip> <port> host <game_name> <max_players> <image_url> [difficulty]")
         print("  To join: python main.py <ip> <port> join <game_id>")
+        print("  Available difficulties: easy, medium, hard")
         network.disconnect()
         sys.exit(1)
 
-    # lets wait for server ACK is nothign time out 
+    # lets wait for server ACK is nothing time out 
     print("Waiting for server response...")
     start_time = time.time()
     while network.game_id is None:
@@ -72,6 +83,7 @@ def main():
     # Get game data from network manager
     image_url = network.image_url
     piece_positions = network.piece_positions
+    difficulty = network.difficulty
     if not image_url or not piece_positions:
         print("Error: Could not retrieve image_url or piece positions from server")
         network.disconnect()
@@ -79,7 +91,7 @@ def main():
 
     # launch game GUI (working dont touch)
     try:
-        gui = GameGUI(network, image_url, piece_positions)
+        gui = GameGUI(network, image_url, piece_positions, difficulty)
         gui.run()
     except Exception as e:
         print(f"An error occurred during the game: {e}")

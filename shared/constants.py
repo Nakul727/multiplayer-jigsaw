@@ -15,6 +15,24 @@ COLOR_YELLOW = (255, 255, 0)
 COLOR_ORANGE = (255, 165, 0)
 
 # Puzzle
-GRID_SIZE = (3, 3)
-TARGET_IMAGE_SIZE = 450
-TARGET_PIECE_SIZE = 150
+DEFAULT_DIFFICULTY = 'easy'
+DIFFICULTY_SETTINGS = {
+    'easy': {
+        'grid': (3, 3), 
+        'pieces': 9,
+        'target_image_size': 450,
+        'target_piece_size': 150
+    },
+    'medium': {
+        'grid': (4, 5), 
+        'pieces': 20,
+        'target_image_size': 500,
+        'target_piece_size': 100
+    },
+    'hard': {
+        'grid': (6, 8), 
+        'pieces': 48,
+        'target_image_size': 600,
+        'target_piece_size': 75
+    }
+}

@@ -6,13 +6,16 @@ import requests
 from PIL import Image
 
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'shared'))
-from constants import *
+from constants import DIFFICULTY_SETTINGS
 
 class Puzzle:
-    def __init__(self, image_url, resize_to=None):
+    def __init__(self, image_url, difficulty='easy', resize_to=None):
         self.image_url = image_url
-        self.grid_rows = GRID_SIZE[0] 
-        self.grid_cols = GRID_SIZE[1]
+        self.difficulty = difficulty
+        self.difficulty_settings = DIFFICULTY_SETTINGS[difficulty]
+        
+        self.grid_rows = self.difficulty_settings['grid'][1]
+        self.grid_cols = self.difficulty_settings['grid'][0]
 
         self.original_size = (0, 0)
         self.resize_to = resize_to
@@ -22,8 +25,6 @@ class Puzzle:
         
         self._load_and_split_image()
         self._display_puzzle_info()
-
-    # -------------------------------------------------------------------------
 
     def _calculate_resize_dimensions(self, original_size):
         """
@@ -38,14 +39,16 @@ class Puzzle:
         original_height = original_size[1]
         aspect_ratio = original_width / original_height
 
-        # Attempt to resized based on TARGET_IMAGE_SIZE
-        # while maintaining aspect ratio
+        # Use difficulty-specific target image size
+        target_size = self.difficulty_settings['target_image_size']
+
+        # Attempt to resize based on target size while maintaining aspect ratio
         if aspect_ratio > 1:
-            resized_width = TARGET_IMAGE_SIZE
-            resized_height = int(TARGET_IMAGE_SIZE / aspect_ratio)
+            resized_width = target_size
+            resized_height = int(target_size / aspect_ratio)
         else:
-            resized_height = TARGET_IMAGE_SIZE
-            resized_width = int(TARGET_IMAGE_SIZE * aspect_ratio)
+            resized_height = target_size
+            resized_width = int(target_size * aspect_ratio)
         
         resized_size = (resized_width, resized_height)
         return resized_size
@@ -79,7 +82,6 @@ class Puzzle:
             self.piece_size = (img_width // self.grid_cols, img_height // self.grid_rows)
 
             # Split image into puzzle pieces
-            # Total pieces = grid_row * grid_cols
             piece_id_counter = 0
             for row in range(self.grid_rows):
                 for col in range(self.grid_cols):
@@ -119,11 +121,11 @@ class Puzzle:
         Display puzzle creation summary
         """
         print(f"Image URL: {self.image_url}")
+        print(f"Difficulty: {self.difficulty}")
         print(f"Puzzle created: {len(self.pieces)} pieces")
         print(f"Grid: {self.grid_cols}×{self.grid_rows}")
         print(f"Original size: {self.original_size}")
         print(f"Piece size: {self.piece_size}")
-        print(f"Pieces: {self.pieces}")
 
     # -------------------------------------------------------------------------
 

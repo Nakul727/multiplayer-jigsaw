@@ -216,17 +216,18 @@ class Server:
         game_name = payload.get('game_name', 'Unnamed Room')
         max_players = payload.get('max_players', 4)
         image_url = payload.get('image_url', '')
+        difficulty = payload.get('difficulty', 'easy')
 
         # Create GameRoom
-        room = GameRoom(game_name, max_players, client_address, image_url)
+        room = GameRoom(game_name, max_players, client_address, image_url, difficulty)
         while room.game_id in self.game_rooms:
-            room = GameRoom(game_name, max_players, client_address, image_url)
+            room = GameRoom(game_name, max_players, client_address, image_url, difficulty)
         
         # Register room and client
         self.game_rooms[room.game_id] = room
         self.client_rooms[client_address] = room.game_id
         
-        print(f"Client {client_address} hosted game: '{game_name}' (ID: {room.game_id})") 
+        print(f"Client {client_address} hosted game: '{game_name}' (ID: {room.game_id}, Difficulty: {difficulty})") 
 
         # Get the updated room state
         room_state = room.get_game_room_state()

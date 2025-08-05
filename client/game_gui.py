@@ -9,16 +9,20 @@ from protocol import *
 from constants import *
 
 class GameGUI:
-    def __init__(self, network_manager, image_url, piece_positions):
+    def __init__(self, network_manager, image_url, piece_positions, difficulty='easy'):
         pygame.init()
         self.screen = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
-        pygame.display.set_caption(f"Multiplayer Jigsaw Puzzle")
+        pygame.display.set_caption(f"Multiplayer Jigsaw Puzzle - {difficulty.title()}")
         self.clock = pygame.time.Clock()
         self.font = pygame.font.Font(None, 36)
         self.small_font = pygame.font.Font(None, 24)
     
         # Network manager
         self.network_manager = network_manager
+        
+        # Difficulty settings
+        self.difficulty = difficulty
+        self.difficulty_settings = DIFFICULTY_SETTINGS[difficulty]
         
         # Game state
         self.selected_piece_index = None
@@ -28,8 +32,8 @@ class GameGUI:
         self.game_won = False
         self.snap_tolerance = 30
         
-        # Create puzzle
-        self.puzzle = Puzzle(image_url)
+        # Create puzzle with difficulty
+        self.puzzle = Puzzle(image_url, difficulty)
         self.pieces = self.puzzle.get_pieces()
         self.piece_rects = []
         
@@ -59,6 +63,7 @@ class GameGUI:
             print(f"Board position: ({board_x}, {board_y})")
             print(f"Piece display size: {self.piece_display_width}x{self.piece_display_height}")
             print(f"Total pieces: {len(self.pieces)}")
+            print(f"Difficulty: {difficulty}")
         else:
             print("Failed to load puzzle pieces. Game cannot start.")
             self.board_rect = pygame.Rect(0, 0, 0, 0)
@@ -333,10 +338,6 @@ class GameGUI:
 
     def _draw_ui(self):
         """Draw UI elements with centered title."""
-        # Get grid info for display
-        grid_str = f"{GRID_SIZE[0]}x{GRID_SIZE[1]}"
-        total_pieces = GRID_SIZE[0] * GRID_SIZE[1]
-        
         # Centered title at the top
         title_text = self.font.render(f"Multiplayer Jigsaw Puzzle", True, COLOR_WHITE)
         title_rect = title_text.get_rect(center=(WINDOW_WIDTH // 2, 25))
@@ -355,20 +356,15 @@ class GameGUI:
         players_surface = self.small_font.render(players_text, True, COLOR_GREY)
         self.screen.blit(players_surface, (10, 50))
         
-        # Puzzle info
-        puzzle_text = f"Puzzle: {total_pieces} pieces"
-        puzzle_surface = self.small_font.render(puzzle_text, True, COLOR_GREY)
-        self.screen.blit(puzzle_surface, (10, 70))
-        
         # Host info
         if hasattr(self.network_manager, 'host_info') and self.network_manager.host_info:
             host_text = f"Host: {self.network_manager.host_info['ip']}:{self.network_manager.host_info['port']}"
         else:
             host_text = "Host: N/A"
         host_surface = self.small_font.render(host_text, True, COLOR_GREY)
-        self.screen.blit(host_surface, (10, 90))
+        self.screen.blit(host_surface, (10, 70))
         
-        # Puzzle state in top-right corner
+        # Puzzle state and difficulty in top-right corner
         correct_pieces = sum(1 for piece in self.pieces if self._is_piece_correctly_placed(piece['id']))
         total_pieces_count = len(self.pieces)
         completion_percent = int((correct_pieces / total_pieces_count) * 100) if total_pieces_count > 0 else 0
@@ -383,6 +379,11 @@ class GameGUI:
         progress_rect = progress_surface.get_rect(topright=(WINDOW_WIDTH - 10, 30))
         self.screen.blit(progress_surface, progress_rect)
         
+        difficulty_text = f"Difficulty: {self.difficulty.title()}"
+        difficulty_surface = self.small_font.render(difficulty_text, True, COLOR_GREY)
+        difficulty_rect = difficulty_surface.get_rect(topright=(WINDOW_WIDTH - 10, 50))
+        self.screen.blit(difficulty_surface, difficulty_rect)
+
     def _draw_board(self):
         """Draw the puzzle board with grid lines using actual dimensions."""
         # Draw board background
