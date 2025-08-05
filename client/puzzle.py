@@ -1,100 +1,104 @@
+import io
+import os 
+import sys
 import pygame
 import requests
-import io
 from PIL import Image
 
-class Puzzle:
-    """
-    Manages the puzzle state, get the image, including fetching the image,
-    splitting it into pieces with unique IDs, and tracking their properties.
-    """
-    # Init
-    def __init__(self, image_url, resize_to=None):
-        
-        # stash the img url and grid size (always 3x3)
-        self.image_url = image_url
-        self.resize_to = resize_to
-        self.grid_cols = 3  # Fixed to 3x3
-        self.grid_rows = 3  # Fixed to 3x3
-        self.pieces = [] # All the smaller puzzle piece go in here MT array
-        self.piece_size = (0, 0)
-        self.original_size = (0, 0)
-        
-        print(f"Creating 3x3 puzzle: {self.grid_cols}x{self.grid_rows} = {self.grid_cols * self.grid_rows} pieces")
-        
-        # get the image and split it into piecess
-        self._load_and_split_image()
+sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'shared'))
+from constants import *
 
-    def _calculate_resize_dimensions(self, original_width, original_height):
-        """Calculate appropriate resize dimensions for 3x3 puzzle"""
+class Puzzle:
+    def __init__(self, image_url, resize_to=None):
+        self.image_url = image_url
+        self.grid_rows = GRID_SIZE[0] 
+        self.grid_cols = GRID_SIZE[1]
+
+        self.original_size = (0, 0)
+        self.resize_to = resize_to
+
+        self.pieces = []
+        self.piece_size = (0, 0)
+        
+        self._load_and_split_image()
+        self._display_puzzle_info()
+
+    # -------------------------------------------------------------------------
+
+    def _calculate_resize_dimensions(self, original_size):
+        """
+        Calculate appropriate resize dimensions for puzzle
+        """
+        # If explicit resize dimensions are provided, use them directly
         if self.resize_to:
             return self.resize_to
-        
-        # Fixed base size for 3x3 puzzle (150px per piece)
-        base_size = 450
-        aspect_ratio = original_width / original_height
-        
-        if aspect_ratio > 1:  # Wider than tall
-            width = base_size
-            height = int(base_size / aspect_ratio)
-        else:  # Taller than wide
-            height = base_size
-            width = int(base_size * aspect_ratio)
-        
-        return (width, height)
 
-    # load the img and split them, giving them unique id
+        # Extract original dimensions and calculate aspect ratio
+        original_width = original_size[0]
+        original_height = original_size[1]
+        aspect_ratio = original_width / original_height
+
+        # Attempt to resized based on TARGET_IMAGE_SIZE
+        # while maintaining aspect ratio
+        if aspect_ratio > 1:
+            resized_width = TARGET_IMAGE_SIZE
+            resized_height = int(TARGET_IMAGE_SIZE / aspect_ratio)
+        else:
+            resized_height = TARGET_IMAGE_SIZE
+            resized_width = int(TARGET_IMAGE_SIZE * aspect_ratio)
+        
+        resized_size = (resized_width, resized_height)
+        return resized_size
+
     def _load_and_split_image(self):
+        """
+        Load image from URL and split it into puzzle pieces
+        """
         if not self.image_url:
-            print("Error: NO Image URL provided.")
+            print("Error: No image URL provided.")
             return
 
         try:
-            # getting the image
-            print(f"Loading image from: {self.image_url}")
+            # Download image from URL
             response = requests.get(self.image_url)
             response.raise_for_status() 
 
-            #  ppen the image with Pillow
+            # Open image with Pillow
             image_file = io.BytesIO(response.content)
             pil_image = Image.open(image_file)
             
-            # Store original size
+            # Store original dimensions
             self.original_size = pil_image.size
-            print(f"Original image size: {self.original_size}")
 
-            # calculate the piecees dimension 🤓👆➕➖✖➗ (idk if we should scale it down)
-            # Calculate and apply resize dimensions
-            resize_dimensions = self._calculate_resize_dimensions(
-                self.original_size[0], self.original_size[1]
-            )
+            # Resize image to optimal puzzle size
+            resize_dimensions = self._calculate_resize_dimensions(self.original_size)
             pil_image = pil_image.resize(resize_dimensions, Image.LANCZOS)
-            print(f"Resized image to: {resize_dimensions}")
 
-            # Calculate the piece dimensions
+            # Calculate individual piece dimensions
             img_width, img_height = pil_image.size
             self.piece_size = (img_width // self.grid_cols, img_height // self.grid_rows)
-            
-            print(f"Image size: {pil_image.size}, Piece size: {self.piece_size}")
 
-            # Crop the image into pieces (always 3x3 = 9 pieces)
+            # Split image into puzzle pieces
+            # Total pieces = grid_row * grid_cols
             piece_id_counter = 0
             for row in range(self.grid_rows):
                 for col in range(self.grid_cols):
-                    left   = col  * self.piece_size [0]
-                    top    = row  * self.piece_size [1]
-                    right  = left + self.piece_size [0]
-                    bottom = top  + self.piece_size [1]
+                    # Calculate crop boundaries for this piece
+                    left = col * self.piece_size[0]
+                    top = row * self.piece_size[1]
+                    right = left + self.piece_size[0]
+                    bottom = top + self.piece_size[1]
                     
+                    # Crop piece from main image
                     pil_piece = pil_image.crop((left, top, right, bottom))
                     
-                    # Convert Pillow image to Pygame
+                    # Convert Pillow image to Pygame surface
                     mode = pil_piece.mode
                     size = pil_piece.size
                     data = pil_piece.tobytes()
                     pygame_piece = pygame.image.fromstring(data, size, mode)
                     
-                    # Store piece with its ID and metadata
+                    # Store piece with metadata
                     self.pieces.append({
                         'id': f'piece_{piece_id_counter}',
                         'image': pygame_piece,
@@ -104,29 +108,48 @@ class Puzzle:
                         'size': size
                     })
                     piece_id_counter += 1
-            
-            print(f"Successfully split image into {len(self.pieces)} pieces with unique IDs.")
 
         except requests.exceptions.RequestException as e:
             print(f"Error downloading image: {e}")
         except Exception as e:
-            print(f"An error occurred while processing the image: {e}")
+            print(f"Error processing image: {e}")
+
+    def _display_puzzle_info(self):
+        """
+        Display puzzle creation summary
+        """
+        print(f"Image URL: {self.image_url}")
+        print(f"Puzzle created: {len(self.pieces)} pieces")
+        print(f"Grid: {self.grid_cols}×{self.grid_rows}")
+        print(f"Original size: {self.original_size}")
+        print(f"Piece size: {self.piece_size}")
+        print(f"Pieces: {self.pieces}")
+
+    # -------------------------------------------------------------------------
 
     def get_pieces(self):
-        """Return list of all puzzle pieces"""
+        """
+        Return list of all puzzle pieces
+        """
         return self.pieces
 
     def get_piece_by_id(self, piece_id):
-        """Get a specific piece by its ID"""
+        """
+        Get a specific piece by its ID
+        """
         for piece in self.pieces:
             if piece['id'] == piece_id:
                 return piece
         return None
 
-    def get_grid_dimensions(self):
-        """Return grid dimensions as (cols, rows) - always (3, 3)"""
-        return (self.grid_cols, self.grid_rows)
-
     def get_piece_size(self):
-        """Return the size of each piece as (width, height)"""
+        """
+        Return the size of each piece as (width, height)
+        """
         return self.piece_size
+    
+    def get_grid_dimensions(self):
+        """
+        Return grid dimensions as (cols, rows)
+        """
+        return (self.grid_cols, self.grid_rows)
