@@ -95,8 +95,7 @@ class Server:
                     # Deserialize message JSON data 
                     message = deserialize(received_data)
 
-                    # Temporary
-                    print(json.dumps(message, indent=2))
+                    print('\n')
 
                     # Pass it to handler to that returns response to send back
                     # and broadcast to send to other connected clients
@@ -227,8 +226,6 @@ class Server:
         self.game_rooms[room.game_id] = room
         self.client_rooms[client_address] = room.game_id
         
-        print(f"Client {client_address} hosted game: '{game_name}' (ID: {room.game_id}, Difficulty: {difficulty})") 
-
         # Get the updated room state
         room_state = room.get_game_room_state()
     
@@ -238,6 +235,8 @@ class Server:
             **room_state,
             'message': f'Successfully hosted game: {game_name}'
         }
+
+        print(f"[RESPONSE] Client {client_address}: Game '{game_name}' hosted (Game Id: {room.game_id})")
 
         response = serialize(MSG_HOST_GAME_ACK, response_payload) 
         broadcast = None
@@ -273,8 +272,6 @@ class Server:
         # Register client
         self.client_rooms[client_address] = game_id
 
-        print(f"Client {client_address} joined game: '{room.game_name}' (ID: {game_id})")
-        
         # Get the updated room state
         room_state = room.get_game_room_state()
 
@@ -293,8 +290,11 @@ class Server:
             'players': room_state['players']
         }
 
+        print(f"[RESPONSE] Client {client_address}: Joined game '{room.game_name}' (Game Id: {game_id})")
+        print(f"[BROADCAST] Player joined sent to {room_state['current_players'] - 1} other players")
+
         response = serialize(MSG_JOIN_GAME_ACK, response_payload)
-        broadcast = serialize(MSG_HOST_GAME_ACK, broadcast_payload)
+        broadcast = serialize(MSG_PLAYER_JOINED_BROD, broadcast_payload)
         return (response, broadcast)
 
     def handle_leave_game(self, client_address):
@@ -313,13 +313,11 @@ class Server:
         # Remove player and check for host change
         host_changed = room.remove_player(client_address)
         del self.client_rooms[client_address]
-       
-        print(f"Client {client_address} left game: '{room.game_name}' (ID: {game_id})") 
 
         # Handle empty room
         if room.is_empty():
             del self.game_rooms[game_id]
-            print(f"Game room '{room.game_name}' (ID: {game_id}) deleted - no players remaining")
+            print(f"[RESPONSE] Client {client_address}: Left game and room '{room.game_name}' (ID: {game_id}) deleted")
             
             response_payload = {'success': True, 'message': 'Successfully left game room'}
             return serialize(MSG_LEAVE_GAME_ACK, response_payload), None
@@ -342,6 +340,9 @@ class Server:
             'host_changed': host_changed,
             'host': room_state['host']
         }
+        
+        print(f"[RESPONSE] Client {client_address}: Left game '{room.game_name}' (ID: {game_id})")
+        print(f"[BROADCAST] Player left sent to {room_state['current_players']} remaining players{' (host changed)' if host_changed else ''}")
         
         response = serialize(MSG_LEAVE_GAME_ACK, response_payload)
         broadcast = serialize(MSG_PLAYER_LEFT_BROD, broadcast_payload)
@@ -386,6 +387,11 @@ class Server:
             }
             broadcast = serialize(MSG_LOCK_OBJECT_BROD, broadcast_payload)
 
+        print(f"[RESPONSE] Client {client_address}: Object '{object_id}' lock {'successful' if success else 'failed'}")
+        if success:
+            print(f"[BROADCAST] Object locked sent to other players in room")
+        print(f"="*80)
+
         return (response, broadcast)
 
     def handle_release_object(self, payload, client_address):
@@ -427,6 +433,11 @@ class Server:
             }
             broadcast = serialize(MSG_RELEASE_OBJECT_BROD, broadcast_payload)
 
+        print(f"[RESPONSE] Client {client_address}: Object '{object_id}' release {'successful' if success else 'failed'}")
+        if success:
+            print(f"[BROADCAST] Object released sent to other players in room")
+        print(f"="*80)
+
         return (response, broadcast)
     
     def handle_move_locked_object(self, payload, client_address):
@@ -459,6 +470,9 @@ class Server:
                 'info': info
             }
             broadcast = serialize(MSG_MOVE_LOCKED_OBJECT_BROD, broadcast_payload)
+
+        if success:
+            print(f"[BROADCAST] Lock object '{object_id}' moved sent to other players in room")
 
         return (response, broadcast)
 
@@ -494,5 +508,9 @@ class Server:
                 'info': info
             }
             broadcast = serialize(MSG_PUZZLE_SOLVED_BROD, broadcast_payload)
+
+        print(f"[RESPONSE] Client {client_address}: Puzzle solved notification {'successful' if success else 'failed'}")
+        if success:
+            print(f"[BROADCAST] Puzzle completion notification sent to all players in room")
 
         return (response, broadcast)
