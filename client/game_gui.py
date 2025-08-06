@@ -59,11 +59,11 @@ class GameGUI:
             # Set piece positions from server data
             self._set_piece_positions(piece_positions)
             
-            print(f"Board size: {board_width}x{board_height}")
-            print(f"Board position: ({board_x}, {board_y})")
-            print(f"Piece display size: {self.piece_display_width}x{self.piece_display_height}")
-            print(f"Total pieces: {len(self.pieces)}")
-            print(f"Difficulty: {difficulty}")
+            # print(f"Board size: {board_width}x{board_height}")
+            # print(f"Board position: ({board_x}, {board_y})")
+            # print(f"Piece display size: {self.piece_display_width}x{self.piece_display_height}")
+            # print(f"Total pieces: {len(self.pieces)}")
+            # print(f"Difficulty: {difficulty}")
         else:
             print("Failed to load puzzle pieces. Game cannot start.")
             self.board_rect = pygame.Rect(0, 0, 0, 0)
@@ -84,7 +84,7 @@ class GameGUI:
         self.piece_rects = []
         
         if server_positions:
-            print(f"Using server-provided piece positions for {len(server_positions)} pieces")
+            # print(f"Using server-provided piece positions for {len(server_positions)} pieces")
             
             # Position pieces according to server data
             for piece_data in self.pieces:

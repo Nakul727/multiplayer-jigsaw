@@ -97,7 +97,7 @@ class NetworkManager:
                 try:
                     message = deserialize(data)
                     # Temporary
-                    print(json.dumps(message, indent=2))
+                    # print(json.dumps(message, indent=2))
                     
                     self._handle_received_message(message)
                 except json.JSONDecodeError:
@@ -121,6 +121,7 @@ class NetworkManager:
         """
         msg_type = message.get('type')
         payload = message.get('payload', {})
+        print("\n")
         
         if msg_type == MSG_HOST_GAME_ACK:
             self._handle_host_game_ack(payload)
@@ -167,10 +168,11 @@ class NetworkManager:
 
             self.piece_positions = payload.get('piece_positions', {})
 
-            print(f"[ACK] Game hosted successfully: {self.game_id}")
-            print(f"[ACK] Room: {self.game_name} ({self.current_players}/{self.max_players})")
-            print(f"[ACK] Difficulty: {self.difficulty}")
-            print(f"[ACK] Piece positions: {len(self.piece_positions)} pieces")
+            # print(f"[ACK] Game hosted successfully: {self.game_id}")
+            # print(f"[ACK] Room: {self.game_name} ({self.current_players}/{self.max_players})")
+            # print(f"[ACK] Difficulty: {self.difficulty}")
+            # print(f"[ACK] Piece positions: {len(self.piece_positions)} pieces")
+            print(f"[ACK] Game hosted, Game Name: {self.game_name}, Game ID: {self.game_id}, Players: ({self.current_players}/{self.max_players})")
         else:
             print(f"[ACK] Failed to host game: {payload.get('message')}")
 
@@ -188,11 +190,12 @@ class NetworkManager:
             
             self.piece_positions = payload.get('piece_positions', {})
 
-            print(f"[ACK] Joined game: {self.game_name}")
-            print(f"[ACK] Players: {self.current_players}/{self.max_players}")
-            print(f"[ACK] Image URL: {self.image_url}")
-            print(f"[ACK] Difficulty: {self.difficulty}")
-            print(f"[ACK] Piece positions: {len(self.piece_positions)} pieces")
+            # print(f"[ACK] Joined game: {self.game_name}")
+            # print(f"[ACK] Players: {self.current_players}/{self.max_players}")
+            # print(f"[ACK] Image URL: {self.image_url}")
+            # print(f"[ACK] Difficulty: {self.difficulty}")
+            # print(f"[ACK] Piece positions: {len(self.piece_positions)} pieces")
+            print(f"[ACK] Joined game, Game Name: {self.game_name}, Game ID: {self.game_id}, Players: ({self.current_players}/{self.max_players})")
         else:
             print(f"[ACK] Failed to join game: {payload.get('message')}")
 
@@ -304,7 +307,7 @@ class NetworkManager:
         if object_id in self.piece_positions:
             self.piece_positions[object_id] = position
 
-        print(f"[BROD] Object moved: {object_id} to {position} by {player_info}")
+        # print(f"[BROD] Object moved: {object_id} to {position} by {player_info}")
       
     def _handle_puzzle_solved_brod(self, payload):
         player_info = payload.get('player')

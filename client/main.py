@@ -13,6 +13,8 @@ def main():
         print("  Available difficulties: easy, medium, hard")
         sys.exit(1)
 
+    print("\n")
+
     # 1. 127.0.0.1 
     server_ip = sys.argv[1]
     # 2. 5555
@@ -26,7 +28,7 @@ def main():
 
     network = NetworkManager()
     if not network.connect(server_ip, server_port):
-        print(f"Failed to connect to server at {server_ip}:{server_port}\n")
+        print(f"Failed to connect to server at {server_ip}:{server_port}")
         return
 
     image_url = ""
@@ -68,8 +70,7 @@ def main():
         network.disconnect()
         sys.exit(1)
 
-    # lets wait for server ACK is nothing time out 
-    print("Waiting for server response...")
+    # lets wait for server ACK is nothing time out     
     start_time = time.time()
     while network.game_id is None:
         time.sleep(0.1)
@@ -78,7 +79,7 @@ def main():
             network.disconnect()
             sys.exit(1)
 
-    print(f"Successfully joined game!!! Game ID: {network.game_id}")
+    # print(f"Game ID: {network.game_id}")
     
     # Get game data from network manager
     image_url = network.image_url

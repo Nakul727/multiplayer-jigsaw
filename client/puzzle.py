@@ -24,7 +24,7 @@ class Puzzle:
         self.piece_size = (0, 0)
         
         self._load_and_split_image()
-        self._display_puzzle_info()
+        # self._display_puzzle_info()
 
     def _calculate_resize_dimensions(self, original_size):
         """
