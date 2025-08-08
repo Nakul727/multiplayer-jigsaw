@@ -8,13 +8,8 @@
   <a href="#overview">Overview</a> •
   <a href="#gameplay">Gameplay</a> •
   <a href="#team-member">Team Members</a> •
-  <a href="#framework">Framework</a> •
-  <a href="#gameplay-mechanics">Game Mechanics</a> •
-  <a href="#winning-condition">Winning Condition</a> •
-  <a href="#technical-details">Technical Details</a> •
   <a href="#setting-up">Setup</a> •
   <a href="#running-the-game">Running</a> •
-  <a href="#code-snippets">Code Snippets</a> •
   <a href="#contribution">Contribution</a>
 </p>
 
