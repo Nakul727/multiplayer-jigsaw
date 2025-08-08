@@ -5,12 +5,17 @@
 </h4>
 
 <p align="center">
-    <a href="#team-member">Team member</a> •
-    <a href="#framework">Framework</a> •
-    <a href="#gameplay-mechanics">Game Mechanics</a> •
-    <a href="#technical-details">Technical details</a> •
-    <a href="#setting-up">setup</a> •
-    <a href="#contribution">Contribution</a>
+  <a href="#overview">Overview</a> •
+  <a href="#gameplay">Gameplay</a> •
+  <a href="#team-member">Team Members</a> •
+  <a href="#framework">Framework</a> •
+  <a href="#gameplay-mechanics">Game Mechanics</a> •
+  <a href="#winning-condition">Winning Condition</a> •
+  <a href="#technical-details">Technical Details</a> •
+  <a href="#setting-up">Setup</a> •
+  <a href="#running-the-game">Running</a> •
+  <a href="#code-snippets">Code Snippets</a> •
+  <a href="#contribution">Contribution</a>
 </p>
 
 ## Gameplay
@@ -65,15 +70,13 @@ A real-time online multiplayer jigsaw puzzle where players collaboratively solve
 
 ### Installation (Windows PowerShell recommended)
 
-# Install deps
-
+```powershell
+# Install dependencies
 pip install -r requirements.txt
 
-# or
-
+# Or install only pygame if needed
 pip install pygame
-
-````
+```
 
 ### Running the Game
 
@@ -83,7 +86,7 @@ python server\main.py
 
 # Start a client (host or join from UI/CLI flow)
 python client\main.py
-````
+```
 
 Project structure:
 
