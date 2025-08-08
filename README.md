@@ -108,6 +108,8 @@ Includes socket opening/closing and handling of mutex-locked object.
 
 class Server:
 
+```python
+
     def start(self):
         self.server_socket.bind((self.host, self.port))
         self.server_socket.listen()
@@ -127,6 +129,7 @@ class Server:
             self.server_socket.close()
         except Exception:
             pass
+```
 
 #### Client Socket Management (`client/network_manager.py`)
 
