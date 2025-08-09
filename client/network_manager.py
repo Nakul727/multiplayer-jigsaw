@@ -121,7 +121,6 @@ class NetworkManager:
         """
         msg_type = message.get('type')
         payload = message.get('payload', {})
-        print("\n")
         
         if msg_type == MSG_HOST_GAME_ACK:
             self._handle_host_game_ack(payload)
@@ -168,6 +167,7 @@ class NetworkManager:
 
             self.piece_positions = payload.get('piece_positions', {})
 
+            print("\n")
             # print(f"[ACK] Game hosted successfully: {self.game_id}")
             # print(f"[ACK] Room: {self.game_name} ({self.current_players}/{self.max_players})")
             # print(f"[ACK] Difficulty: {self.difficulty}")
@@ -190,6 +190,7 @@ class NetworkManager:
             
             self.piece_positions = payload.get('piece_positions', {})
 
+            print("\n")
             # print(f"[ACK] Joined game: {self.game_name}")
             # print(f"[ACK] Players: {self.current_players}/{self.max_players}")
             # print(f"[ACK] Image URL: {self.image_url}")
@@ -223,6 +224,7 @@ class NetworkManager:
             print(f"[ACK] Failed to leave game: {payload.get('message')}")
 
     def _handle_lock_object_ack(self, payload):
+        print("\n")
         if payload.get('success'):
             print(f"[ACK] Object locked: {payload.get('object_id')}")
         else:
@@ -231,6 +233,7 @@ class NetworkManager:
             print(f"[ACK] Locked objects: {payload['locked_objects']}")
 
     def _handle_release_object_ack(self, payload):
+        print("\n")
         if payload.get('success'):
             print(f"[ACK] Object released: {payload.get('object_id')}")
         else:
@@ -247,6 +250,7 @@ class NetworkManager:
     # Broadcast Handlers
 
     def _handle_player_joined_brod(self, payload):
+        print("\n")
         player_info = payload.get('player')
         self.current_players = payload.get('current_players', self.current_players)
 
@@ -254,6 +258,7 @@ class NetworkManager:
         print(f"[BROD] Room now has {self.current_players} players")
     
     def _handle_player_left_brod(self, payload):
+        print("\n")
         player_info = payload.get('player')
         self.current_players = payload.get('current_players', self.current_players)
         
@@ -274,6 +279,7 @@ class NetworkManager:
 
 
     def _handle_lock_object_brod(self, payload):
+        print("\n")
         player_info = payload.get('player')
         object_id = payload.get('object_id') 
 
@@ -284,6 +290,7 @@ class NetworkManager:
   
 
     def _handle_release_object_brod(self, payload):
+        print("\n")
         object_id = payload.get('object_id')
         position = payload.get('position')
         player_info = payload.get('player')
@@ -310,6 +317,7 @@ class NetworkManager:
         # print(f"[BROD] Object moved: {object_id} to {position} by {player_info}")
       
     def _handle_puzzle_solved_brod(self, payload):
+        print("\n")
         player_info = payload.get('player')
         self.puzzle_completed = True
         self.puzzle_solver = player_info
@@ -318,6 +326,7 @@ class NetworkManager:
     # Error
 
     def _handle_error(self, payload):
+        print("\n")
         error_message = payload.get('message', 'Unknown error')
         print(f"[ERROR] Server error: {error_message}")
 

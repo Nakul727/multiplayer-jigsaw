@@ -225,7 +225,6 @@ class GameGUI:
                 self.is_dragging = True
                 self.selected_piece_index = i
                 
-                print(f"Picking up piece: {piece_id}")
                 self.network_manager.lock_object(piece_id)
                 
                 # Calculate mouse offset for smooth dragging
@@ -266,7 +265,6 @@ class GameGUI:
         # Update network manager's local position tracking
         self.network_manager.update_local_piece_position(piece_id, {"x": final_pos[0], "y": final_pos[1]})
         
-        print(f"Releasing piece {piece_id} at {final_pos}")
         self.network_manager.release_object(piece_id, {"x": final_pos[0], "y": final_pos[1]})
         
         # Check win condition

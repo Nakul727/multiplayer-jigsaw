@@ -83,6 +83,7 @@ class Server:
         """
         Main thread function to handle communication with a single client
         """
+        print('\n')
         print(f"New connection established from {client_address}")
 
         try:
@@ -94,8 +95,6 @@ class Server:
                 try:
                     # Deserialize message JSON data 
                     message = deserialize(received_data)
-
-                    print('\n')
 
                     # Pass it to handler to that returns response to send back
                     # and broadcast to send to other connected clients
