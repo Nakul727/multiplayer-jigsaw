@@ -1,103 +1,80 @@
-<h4 align="center">
-    Multiplayer Jigsaw Puzzle <br>
-    CMPT 371: Data Communication / Networking
-    <div align="center">
-</h4>
-
-<p align="center">
-  <a href="#overview">Overview</a> •
-  <a href="#gameplay">Gameplay</a> •
-  <a href="#team-member">Team Members</a> •
-  <a href="#setting-up">Setup</a> •
-  <a href="#running-the-game">Running</a> •
-  <a href="#contribution">Contribution</a>
-</p>
-
-## Gameplay
-
-<!-- [Game Demo](https://www.youtube.com/your-demo-link) -->
-
-### Team member
-
-- name (student id)
-- name (student id)
-- name (student id)
-- name (student id)
-
-### Framework
-
-- Python 3.11+
-- Pygame for the frontend UI and rendering
+# Multiplayer Jigsaw Puzzle
 
 ## Overview
 
-A real-time online multiplayer jigsaw puzzle where players collaboratively solve a puzzle. The server coordinates piece locking (mutex) and broadcasts movements so all clients stay in sync. When any player completes the puzzle, all clients see the completion screen.
+This is implementation of a multiplayer jigsaw puzzle where players collaboratively solve a puzzle. The project follows a client-server architecture - the clients are responsible for rendering the game while the server coordinates the game state (piece positions, locking and broadcasts movements so all clients stay in sync). When any player completes the puzzle, all clients are notified. Clients can host games - by providing simple information like image url, max players, difficulty level - and join games via a shared game id. The server and client communicated with a well defined JSON protocol, containing various message types and functions for (de)serialization.
 
-## Gameplay Mechanics
+
+## Gameplay
 
 - Drag-and-drop puzzle pieces on a shared board
 - Piece locking: only one player can hold (move) a piece at a time
 - Smart snapping when a piece is near its correct location
 - Real-time synchronization of piece positions across all clients
-- Shared completion celebration when the puzzle is solved
-
-## Winning Condition
-
 - The puzzle is considered complete when all pieces are placed correctly.
 - When any player completes the puzzle, the server broadcasts completion and all clients show the win screen.
 
-## Technical Details
 
-- Client-Server Model
-  - Server manages rooms, players, and mutex-locked pieces.
-  - Clients render the game (Pygame) and send input (lock/release/move).
-- Raw Sockets (TCP)
-  - Custom JSON protocol for host/join/lock/release/move/solve.
-- Simple 2D Graphics
-  - Pygame-based rendering focused on functionality.
 
-## Setting up
 
-### Prerequisites
+## Setup and Installation
 
-- Python 3.11+
-- Pygame
+This project is built with native python libraries like sockets. However, it requires some additional libaries like pygame (for frontend), pillow (for image processing) and requests (for fetching image). Make sure to have a python v3.11+ installed.
 
-### Installation (Windows PowerShell recommended)
+```zsh
+git clone https://github.com/Nakul727/multiplayer-jigsaw.git
+cd multiplayer-jigsaw
+```
 
-```powershell
-# Install dependencies
-pip install -r requirements.txt
+```zsh
+python3 -m venv venv
+source venv/bin/activate
+python3 -m pip install -r requirements.txt
+```
 
-# Or install only pygame if needed
-pip install pygame
+### Project structure:
+
+```
+shared/
+  ├─ protocol.py          # Message types and serialization
+  └─ constants.py         # Ports, colors, sizes, difficulty presets
+server/
+  ├─ main.py              # Server entry point
+  ├─ server.py            # Socket accept loop and message routing
+  └─ game_room.py         # Room state (players, locks, piece positions)
+client/
+  ├─ main.py              # Client entry/launcher
+  ├─ game_gui.py          # Pygame GUI and game logic
+  ├─ network_manager.py   # TCP client and handlers
+  └─ puzzle.py            # Puzzle image slicing and piece metadata
 ```
 
 ### Running the Game
 
-```powershell
-# Start the server
+Server can be run independently on any computer. To start the server:
+```zsh
 python server\main.py
+```
+This will provide you with a the loopback and local IP address. Note: You can only connect to the server via local machine or LAN. To connect remotely, we would need to host the server.
 
-# Start a client (host or join from UI/CLI flow)
-python client\main.py
+<br>
+
+To host a game:
+```zsh
+python client\main.py 127.0.0.1 5555 <game_name> <max_players> <image_url> <difficulty>
+
+# Example
+python3 client/main.py 127.0.0.1 5555 host "Cat Puzzle" 4 "https://i.pinimg.com/1200x/97/c3/e0/97c3e03d8bc65b3f277908c07289141f.jpg" easy
 ```
 
-Project structure:
+This will return a game Id that you can use to join a game.
+To join a game:
 
-```
-shared/
-  ├─ protocol.py      # Message types and serialization
-  └─ constants.py     # Ports, colors, sizes, difficulty presets
-server/
-  ├─ main.py          # Server entry point
-  ├─ server.py        # Socket accept loop and message routing
-  └─ game_room.py     # Room state (players, locks, piece positions)
-client/
-  ├─ main.py          # Client entry/launcher
-  ├─ game_gui.py      # Pygame GUI and game logic
-  ├─ network_manager.py  # TCP client and handlers
-  └─ puzzle.py        # Puzzle image slicing and piece metadata
+```zsh
+python3 client/main.py 127.0.0.1 5555 join <game_id>
+
+# Example
+python3 client/main.py 127.0.0.1 5555 join 2YH5WB
 ```
 
 ## Code Snippets
@@ -156,42 +133,44 @@ class Server:
                 self.sock = None
 ```
 
-#### Mutex-Locked Object Handling (`server/game_room.py`)
+#### Locked Object Handling (`server/game_room.py`)
 
 ```python
 class GameRoom:
     def __init__(self, ...):
-        self.locked_objects = {}      # {object_id: (ip, port)}
-        self.piece_positions = {}     # {object_id: {"x": int, "y": int}}
+        self.locked_objects = {}
+        self.piece_positions = {}
 
-    def lock_object(self, object_id, player_addr):
+    def lock_object(self, object_id, client_address):
         if not object_id:
-            return False, {"error": "missing object_id"}
+            return False, {'error': 'Missing object_id'}
         if object_id in self.locked_objects:
-            return False, {"error": "already_locked"}
-        self.locked_objects[object_id] = player_addr
-        return True, {}
+            return False, {'error': f'Object {object_id} is already locked'}
+        
+        self.locked_objects[object_id] = client_address
+        return True, {'message': f'Object {object_id} locked'}
 
-    def release_object(self, object_id, player_addr, position):
-        owner = self.locked_objects.get(object_id)
-        if owner != player_addr:
-            return False, {"error": "not_owner"}
-        self.locked_objects.pop(object_id, None)
-        # Persist the final position for new joiners/sync
-        if isinstance(position, dict) and "x" in position and "y" in position:
-            self.piece_positions[object_id] = {"x": int(position["x"]), "y": int(position["y"])}
-        return True, {}
+    def release_object(self, object_id, client_address, position):
+        if not object_id or position is None:
+            return False, {'error': 'Missing object_id or position'}
+        if self.locked_objects.get(object_id) != client_address:
+            return False, {'error': f'Object {object_id} not locked by you'}
+    
+        # Remove from locked objects
+        del self.locked_objects[object_id]
+        
+        # Update piece position in server state
+        self.update_piece_position(object_id, position)
+        return True, {'message': f'Object {object_id} released'}
 ```
 
-### Contribution
+### Group Members
 
-Every group member contributed to client-server communication and synchronization.
+This project was made for CMPT 371: Data Communication and Networking, Summer 2025, SFU. 
 
-- name (25%)
-  - …
-- name (25%)
-  - …
-- name (25%)
-  - …
-- name (25%)
-  - …
+Below are the names and corresponding github usernames:
+
+- Nakul Bansal (Nakul727)
+- Ruiyang Wu (Brady666-777)
+- Raghav Ahuja (raghavahuja2801)
+- Jonathan Goh (goldfish047)
