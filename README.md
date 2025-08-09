@@ -186,8 +186,9 @@ Every group member contributed to client-server communication and synchronizatio
 
 - name (25%)
   - …
-- name (25%)
-  - …
+- Brady wu (25%)
+  - game GUI, added grid snapping and completion detection
+  - Integrating a NetworkManager for synchronization and server-side room/lock coordination
 - name (25%)
   - …
 - name (25%)
