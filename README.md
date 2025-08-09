@@ -15,7 +15,7 @@
 
 ## Gameplay
 
-<!-- [Game Demo](https://www.youtube.com/your-demo-link) -->
+[Game Demo](https://www.youtube.com/watch?v=b6uqOAH72xM)
 
 ### Team member
 
