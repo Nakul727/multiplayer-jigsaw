@@ -19,10 +19,10 @@
 
 ### Team member
 
-- name (student id)
-- name (student id)
-- name (student id)
-- name (student id)
+- Nakul Bansal (student id)
+- Jin Yi (Jonathan) Goh (301539574)
+- Ruiyang (Brady)Wu (301604673)
+- Raghav Ahuja (301473852)
 
 ### Framework
 
@@ -180,16 +180,4 @@ class GameRoom:
         return True, {}
 ```
 
-### Contribution
 
-Every group member contributed to client-server communication and synchronization.
-
-- name (25%)
-  - …
-- Brady wu (25%)
-  - game GUI, added grid snapping and completion detection
-  - Integrating a NetworkManager for synchronization and server-side room/lock coordination
-- name (25%)
-  - …
-- name (25%)
-  - …
