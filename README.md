@@ -4,6 +4,14 @@
 
 This is implementation of a multiplayer jigsaw puzzle where players collaboratively solve a puzzle. The project follows a client-server architecture - the clients are responsible for rendering the game while the server coordinates the game state (piece positions, locking and broadcasts movements so all clients stay in sync). When any player completes the puzzle, all clients are notified. Clients can host games - by providing simple information like image url, max players, difficulty level - and join games via a shared game id. The server and client communicated with a well defined JSON protocol, containing various message types and functions for (de)serialization.
 
+<br>
+
+<img src="assets/game.gif" alt="Gif" width="800"/>
+
+<br>
+
+[Game Demo](https://www.youtube.com/watch?v=b6uqOAH72xM)
+
 ## Gameplay
 
 - Drag-and-drop puzzle pieces on a shared board
