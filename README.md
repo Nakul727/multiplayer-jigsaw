@@ -160,9 +160,6 @@ class Server:
 
 ```python
 class GameRoom:
-    def __init__(self, ...):
-        self.locked_objects = {}      # {object_id: (ip, port)}
-        self.piece_positions = {}     # {object_id: {"x": int, "y": int}}
 
     def lock_object(self, object_id, player_addr):
         if not object_id:
